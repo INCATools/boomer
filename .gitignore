@@ -1,0 +1,11 @@
+.cache-main
+.classpath
+.project
+.settings
+.idea
+.cache-tests
+bin
+catalog-v001.xml
+project/project
+project/target
+target
