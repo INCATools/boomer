@@ -1,9 +1,7 @@
 package org.monarchinitiative.boomer
 
-import java.util.UUID
-
 import org.geneontology.whelk.BuiltIn._
-import org.geneontology.whelk.{AtomicConcept, Axiom, ConceptInclusion, Conjunction, Reasoner, ReasonerState}
+import org.geneontology.whelk.{Axiom, ConceptInclusion, Reasoner, ReasonerState}
 import zio._
 
 import scala.Ordering.Double.TotalOrdering
@@ -19,12 +17,17 @@ object Boom {
 
   }
 
-  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[AlternativeHypotheticals]): Task[(List[HypotheticalAxioms], ReasonerState)] = {
+  final case class VisitedAlternativeHypotheticals(selected: HypotheticalAxioms, remainingAlternatives: List[HypotheticalAxioms], remainingPossibilities: List[AlternativeHypotheticals], previousReasonerState: ReasonerState)
+
+  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[AlternativeHypotheticals]): Task[(List[VisitedAlternativeHypotheticals], ReasonerState)] = {
     val whelk = Reasoner.assert(assertions)
     println("Done first classification")
     val orderedHypotheticals = probabilisticOntology.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    search(orderedHypotheticals, Nil, whelk).map { case (selectedHypotheticals, reasonerState) =>
-      val jointProbability = selectedHypotheticals.map(_.probability).product
+    val maxProbability = orderedHypotheticals.map(ah => Math.log(ah.mostProbable.probability)).sum
+    search(Nil, orderedHypotheticals, Nil, whelk).map { case (selectedHypotheticals, reasonerState) =>
+      println(s"Max probability: $maxProbability")
+      val jointProbability = selectedHypotheticals.map(sh => Math.log(sh.selected.probability)).sum
+      println(jointProbability)
       (selectedHypotheticals, reasonerState)
     }
   }
@@ -33,24 +36,24 @@ object Boom {
    * @return (accepted hypothetical axioms, final reasoner state)
    */
   @tailrec
-  def search(possibilities: List[AlternativeHypotheticals], previouslySelected: List[HypotheticalAxioms], reasonerState: ReasonerState): Task[(List[HypotheticalAxioms], ReasonerState)] = {
-    possibilities match {
-      case Nil                                   => ZIO.succeed(previouslySelected, reasonerState)
-      case current :: remainingAlternativeGroups =>
+  def search(currentAlternatives: List[HypotheticalAxioms], possibilities: List[AlternativeHypotheticals], previouslySelected: List[VisitedAlternativeHypotheticals], reasonerState: ReasonerState): Task[(List[VisitedAlternativeHypotheticals], ReasonerState)] = {
+    println(previouslySelected.size)
+    val coherent = !isIncoherent(reasonerState)
+    (coherent, currentAlternatives, possibilities, previouslySelected) match {
+      case (true, Nil, Nil, ps)                                                                                                                                                                     =>
+        ZIO.succeed((ps, reasonerState))
+      case (true, Nil, current :: remainingAlternativeGroups, ps)                                                                                                                                   =>
         val alternativesByDescreasingProb = current.groups.toList.sortBy(_.probability)(Ordering[Double].reverse)
-        val maybeSelectedAlternative =
-          alternativesByDescreasingProb.to(LazyList)
-            .map {
-              group =>
-                group -> Reasoner.assert(group.axioms, reasonerState)
-            }
-            .find {
-              case (_, state) => !isIncoherent(state)
-            }
-        maybeSelectedAlternative match {
-          case None                         => ZIO.fail(BoomError(s"Nothing worked in group: $current"))
-          case Some((selectedGroup, state)) => search(remainingAlternativeGroups, selectedGroup :: previouslySelected, state)
-        }
+        search(alternativesByDescreasingProb, remainingAlternativeGroups, ps, reasonerState)
+      case (true, selected :: remainingAlternatives, remainingPossibilities, ps)                                                                                                                    =>
+        val newReasonerState = Reasoner.assert(selected.axioms, reasonerState)
+        search(Nil, remainingPossibilities, VisitedAlternativeHypotheticals(selected, remainingAlternatives, remainingPossibilities, reasonerState) :: ps, newReasonerState)
+      case (false, _, _, VisitedAlternativeHypotheticals(_, Nil, _, _) :: VisitedAlternativeHypotheticals(_, othersToSelect, remainingPossibilities, prevReasonerState) :: otherPreviouslySelected) =>
+        search(othersToSelect, remainingPossibilities, otherPreviouslySelected, reasonerState) ///
+      case (false, _, _, VisitedAlternativeHypotheticals(_, othersToSelect, remainingPossibilities, prevReasonerState) :: otherPreviouslySelected)                                                  =>
+        search(othersToSelect, remainingPossibilities, otherPreviouslySelected, prevReasonerState)
+      case (false, _, _, Nil)                                                                                                                                                                       =>
+        ZIO.fail(BoomError("Found no result"))
     }
   }
 

@@ -68,7 +68,7 @@ object OntUtil {
           HypotheticalAxioms(s"$rightCURIE ProperSubClassOf $leftCURIE", leftNotSubOfRight + ConceptInclusion(right, left), probProperSubRightLeft),
           HypotheticalAxioms(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
           HypotheticalAxioms(s"$leftCURIE SiblingOf $rightCURIE", leftNotSubOfRight ++ rightNotSubOfLeft, probNoSubsumption)
-        ))
+        ).filter(_.probability > 0.0))
       }
     } else Task.fail(BoomError(s"Invalid ptable line: $line"))
   }
