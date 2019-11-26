@@ -5,7 +5,7 @@ import java.util.UUID
 
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{AtomicConcept, Axiom, Bridge, ConceptInclusion, Conjunction}
-import org.monarchinitiative.boomer.Boom.{AlternativeHypotheticals, BoomError, HypotheticalAxioms}
+import org.monarchinitiative.boomer.Boom.{AlternativesGroup, BoomError, Proposal}
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.model._
 import org.semanticweb.owlapi.model.parameters.Imports
@@ -41,14 +41,14 @@ object OntUtil {
     case other                               => Left(other)
   }
 
-  def readPTable(file: File): ZIO[Blocking, Throwable, Set[AlternativeHypotheticals]] = for {
+  def readPTable(file: File): ZIO[Blocking, Throwable, Set[AlternativesGroup]] = for {
     source <- Task.effect(Source.fromFile(file, "utf-8"))
     lines <- Task.effect(source.getLines())
     parsed <- Task.effect(lines.map(parsePTableLine).toList)
     entries <- ZIO.collectAll(parsed)
   } yield entries.toSet
 
-  private def parsePTableLine(line: String): Task[AlternativeHypotheticals] = {
+  private def parsePTableLine(line: String): Task[AlternativesGroup] = {
     val columns = line.split("\\t", -1)
     if (columns.size == 6) {
       val leftCURIE = columns(0).trim
@@ -63,11 +63,11 @@ object OntUtil {
         rightNotSubOfLeft <- negateConceptInclusion(ConceptInclusion(right, left))
         leftNotSubOfRight <- negateConceptInclusion(ConceptInclusion(left, right))
       } yield {
-        AlternativeHypotheticals(Set(
-          HypotheticalAxioms(s"$leftCURIE ProperSubClassOf $rightCURIE", rightNotSubOfLeft + ConceptInclusion(left, right), probProperSubLeftRight),
-          HypotheticalAxioms(s"$rightCURIE ProperSubClassOf $leftCURIE", leftNotSubOfRight + ConceptInclusion(right, left), probProperSubRightLeft),
-          HypotheticalAxioms(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
-          HypotheticalAxioms(s"$leftCURIE SiblingOf $rightCURIE", leftNotSubOfRight ++ rightNotSubOfLeft, probNoSubsumption)
+        AlternativesGroup(Set(
+          Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", rightNotSubOfLeft + ConceptInclusion(left, right), probProperSubLeftRight),
+          Proposal(s"$rightCURIE ProperSubClassOf $leftCURIE", leftNotSubOfRight + ConceptInclusion(right, left), probProperSubRightLeft),
+          Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
+          Proposal(s"$leftCURIE SiblingOf $rightCURIE", leftNotSubOfRight ++ rightNotSubOfLeft, probNoSubsumption)
         ).filter(_.probability > 0.0))
       }
     } else Task.fail(BoomError(s"Invalid ptable line: $line"))
