@@ -15,8 +15,8 @@ object Main extends App {
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(args(1)))))
       assertions = Bridge.ontologyToAxioms(ont)
       result <- Boom.evaluate(assertions, ptable)
-      (accepted, reasonerState) = result
-      output = accepted.map(_.selected.label).mkString("\n")
+      output = result.size.toString
+      //output = result.map(_.toString).mkString("\n")
       writer <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8"))
       _ <- ZIO.effect(writer.write(output))
       _ <- ZIO.effect(writer.close())

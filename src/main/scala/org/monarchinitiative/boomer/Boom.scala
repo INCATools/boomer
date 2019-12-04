@@ -9,9 +9,21 @@ import scala.annotation.tailrec
 
 object Boom {
 
-  final case class Proposal(label: String, axioms: Set[ConceptInclusion], probability: Double)
+  sealed trait GeneralizedProposal {
 
-  final case class AlternativesGroup(groups: Set[Proposal]) {
+    def axioms: Set[ConceptInclusion]
+
+  }
+
+  final case class Proposal(label: String, axioms: Set[ConceptInclusion], probability: Double) extends GeneralizedProposal
+
+  sealed trait Possibility {
+
+    def sorted: List[GeneralizedProposal]
+
+  }
+
+  final case class AlternativesGroup(groups: Set[Proposal]) extends Possibility {
 
     val mostProbable: Proposal = groups.maxBy(_.probability)
 
@@ -19,101 +31,139 @@ object Boom {
 
   }
 
-  final case class SelectedProposal(selected: Proposal, group: AlternativesGroup, remainingAlternatives: List[Proposal], remainingPossibilities: List[AlternativesGroup], previousReasonerState: ReasonerState)
+  final case class ClumpProposal(proposal: Map[AlternativesGroup, Proposal]) extends GeneralizedProposal {
 
-  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[AlternativesGroup]): Task[(List[SelectedProposal], ReasonerState)] = {
+    def axioms: Set[ConceptInclusion] = proposal.values.flatMap(_.axioms).toSet
+
+  }
+
+  final case class Clump(groups: Set[AlternativesGroup]) extends Possibility {
+
+    //TODO this may grow too large
+    def sorted: List[ClumpProposal] =
+      groups.foldLeft(List(Map.empty[AlternativesGroup, Proposal])) { case (acc, group) =>
+        group.groups.toList.flatMap(p => acc.map(m => m.updated(group, p)))
+      }.sortBy(_.values.map(_.probability).product)(Ordering[Double].reverse).map(ClumpProposal)
+
+    def add(possibility: Possibility): Clump = possibility match {
+      case ag: AlternativesGroup => Clump(groups + ag)
+      case Clump(gs)             => Clump(groups ++ gs)
+    }
+
+  }
+
+  sealed trait Selection {
+
+    def remainingPossibilities: List[Possibility]
+
+    def reasonerState: ReasonerState
+
+    def probability: Double
+
+  }
+
+  final case class Init(remainingPossibilities: List[AlternativesGroup], reasonerState: ReasonerState) extends Selection {
+
+    override val probability: Double = 1.0
+
+  }
+
+  final case class SelectedProposal(selected: Proposal, group: AlternativesGroup, remainingPossibilities: List[Possibility], reasonerState: ReasonerState) extends Selection {
+
+    override def probability: Double = selected.probability
+
+  }
+
+  final case class SelectedClump(selected: ClumpProposal, clump: Clump, remainingPossibilities: List[Possibility], reasonerState: ReasonerState) extends Selection {
+
+    override def probability: Double = selected.proposal.values.map(_.probability).product
+
+  }
+
+  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[AlternativesGroup]): Task[List[Selection]] = {
     val whelk = Reasoner.assert(assertions)
     println("Done first classification")
     val orderedHypotheticals = probabilisticOntology.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
     val maxProbability = orderedHypotheticals.map(ah => Math.log(ah.mostProbable.probability)).sum
-    orderedHypotheticals match {
-      case first :: rest =>
-        val alternativesByDescreasingProb = first.groups.toList.sortBy(_.probability)(Ordering[Double].reverse)
-        alternativesByDescreasingProb match {
-          case newSelection :: others =>
-            search(Some(SelectedProposal(newSelection, first, others, rest, whelk)), Nil, whelk, None).map { case (selectedHypotheticals, reasonerState) =>
-              println(s"Max probability: $maxProbability")
-              val jointProbability = selectedHypotheticals.map(sh => Math.log(sh.selected.probability)).sum
-              println(jointProbability)
-              (selectedHypotheticals, reasonerState)
-            }
-          case Nil                    => ZIO.fail(BoomError("Empty alternative set should not exist"))
-        }
-      case Nil           => ZIO.fail(BoomError("Nothing to do"))
+    search(List(Init(orderedHypotheticals, whelk))).map { selected =>
+      println(s"Max probability: $maxProbability")
+      val jointProbability = selected.map(s => Math.log(s.probability)).sum
+      println(jointProbability)
+      selected
     }
   }
 
-  //@tailrec
-  def search(current: Option[SelectedProposal], previouslySelected: List[SelectedProposal], lastReasonerState: ReasonerState, lastTried: Option[SelectedProposal]): Task[(List[SelectedProposal], ReasonerState)] = {
-    //println(previouslySelected.size)
-    (current, lastTried) match {
-      case (Some(vah @ SelectedProposal(selected, _, _, remaining, prevReasonerState)), _) =>
-        val newReasonerState = Reasoner.assert(selected.axioms, prevReasonerState)
-        if (isIncoherent(newReasonerState))
-          search(nextHypothetical(vah), previouslySelected, newReasonerState, Some(vah))
-        else {
-          remaining match {
-            case newGroup :: remainingGroups =>
-              val alternativesByDescreasingProb = newGroup.groups.toList.sortBy(_.probability)(Ordering[Double].reverse)
-              alternativesByDescreasingProb match {
-                case newSelection :: rest =>
-                  search(Some(SelectedProposal(newSelection, newGroup, rest, remainingGroups, newReasonerState)), vah :: previouslySelected, newReasonerState, Some(vah))
-                case Nil                  => ZIO.fail(BoomError("Empty alternative set should not exist"))
-              }
-            case Nil                         => ZIO.succeed(vah :: previouslySelected, newReasonerState)
+  @tailrec
+  def search(selected: List[Selection]): Task[List[Selection]] =
+    selected match {
+      case Nil       => ZIO.fail(BoomError("Search must be called with at least an Init in previouslySelected"))
+      case prev :: _ =>
+        prev.remainingPossibilities match {
+          case Nil               => ZIO.succeed(selected)
+          case next :: remaining => tryAdding(next, remaining, prev.reasonerState) match {
+            case None            => searchForConflict(next, selected, remaining)
+            case Some(selection) => search(selection :: selected)
           }
         }
-      case (None, maybeLast)                                                               =>
-        //        val unsats = unsatisfiableClasses(lastReasonerState).toSet[Entity]
-        //        val res = previouslySelected.find(_.selected.axioms.exists(ax => ax.signature.exists(unsats)))
-        //        println(unsats)
-        //        println(s"DO SOMETHING WITH: $res")
+    }
 
-
-        println(s"HIT WALL at ${maybeLast.map(_.selected.label)}")
-        val newBeginnings = for {
-          SelectedProposal(nextSelected, nextGroup, nextOthers, _, _) <- maybeLast.toList
-          //(selectionToUse, othersToUse) <- if (shuffled) nextOthers.headOption.map(_ -> nextOthers.tail) else Some(nextSelected -> nextOthers)
-          SelectedProposal(_, group, _, remainingPossibilities, previousReasonerState) <- previouslySelected.lastOption.toList
-          filteredRemainingPossibilities = remainingPossibilities.filterNot(_ == nextGroup)
-          proposal <- nextGroup.sorted
-        } yield {
-          val selection = SelectedProposal(proposal, nextGroup, Nil, group :: filteredRemainingPossibilities, previousReasonerState)
-          ZIO.effect(search(Some(selection), Nil, previousReasonerState, None))
+  @tailrec
+  private def searchForConflict(possibility: Possibility, selected: List[Selection], newRemaining: List[Possibility]): Task[List[Selection]] =
+    selected match {
+      case Nil                             => ZIO.fail(BoomError("Reached beginning trying to find conflicting group"))
+      case first :: (rest @ (second :: _)) =>
+        val compatible = possibility.sorted.exists { proposal =>
+          val newReasonerState = Reasoner.assert(proposal.axioms, second.reasonerState)
+          isCoherent(newReasonerState)
         }
-        if (newBeginnings.isEmpty) ZIO.fail(BoomError("Not sure what to do"))
-        else {
-          val res = ZIO.collectAllPar(newBeginnings)
-          for {
-            collected <- ZIO.collectAllPar(newBeginnings)
-            results <- ZIO.sequence(collected)
-            best = results.maxBy(res => jointProbability(res._1))
-          } yield best
+        if (compatible) {
+          println(s"Making clump at ${rest.size}")
+          val clump = first match {
+            case SelectedProposal(_, ag, _, _)         => Clump(Set(ag)).add(possibility)
+            case SelectedClump(_, c @ Clump(gs), _, _) => c.add(possibility)
+          }
+          println(clump)
+          val updatedRemaining = newRemaining.filterNot(_ == possibility)
+          tryAdding(clump, updatedRemaining, second.reasonerState) match {
+            case None            => ZIO.fail(BoomError("We aren't prepared for clumps that can't be added!"))
+            case Some(selection) => search(selection :: rest)
+          }
+        } else {
+          val remainingPossibility = first match {
+            case SelectedProposal(_, ag, _, _) => ag
+            case SelectedClump(_, c, _, _)     => c
+          }
+          searchForConflict(possibility, rest, remainingPossibility :: newRemaining)
+        }
+    }
+
+  private def tryAdding(possibility: Possibility, remaining: List[Possibility], reasonerState: ReasonerState): Option[Selection] = {
+    possibility match {
+      case ag: AlternativesGroup =>
+        val maybeAdded = ag.sorted.to(LazyList).map { proposal =>
+          val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
+          proposal -> newReasonerState
+        }.find { case (_, state) => isCoherent(state) }
+        maybeAdded.map {
+          case (proposal, state) => SelectedProposal(proposal, ag, remaining, state)
         }
 
-
-
-      //old backtracking
-      //search1(nextHypothetical(oldVAH), older, lastReasonerState)
-      //case Nil => ZIO.fail(BoomError("Found no result"))
-
+      case clump: Clump =>
+        val maybeAdded = clump.sorted.to(LazyList).map { proposal =>
+          val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
+          proposal -> newReasonerState
+        }.find { case (_, state) => isCoherent(state) }
+        maybeAdded.map {
+          case (proposal, state) => SelectedClump(proposal, clump, remaining, state)
+        }
     }
   }
 
   private def jointProbability(selections: List[SelectedProposal]): Double = selections.map(s => Math.log(s.selected.probability)).sum
 
-  private def nextHypothetical(vah: SelectedProposal): Option[SelectedProposal] = {
-    vah.remainingAlternatives match {
-      case newSelection :: rest => Some(SelectedProposal(newSelection, vah.group, rest, vah.remainingPossibilities, vah.previousReasonerState))
-      case Nil                  => None
-    }
-  }
+  private def isCoherent(state: ReasonerState): Boolean = !isIncoherent(state)
 
-  private def isIncoherent(state: ReasonerState): Boolean = {
-    //    val bad = state.closureSubsBySuperclass(Bottom).filter(t => !t.isAnonymous && t != Bottom).map(_.toString)
-    //    if (bad.nonEmpty) println(bad.mkString("  "))
-    state.closureSubsBySuperclass(Bottom).exists(t => !t.isAnonymous && t != Bottom)
-  }
+  private def isIncoherent(state: ReasonerState): Boolean = state.closureSubsBySuperclass(Bottom).exists(t => !t.isAnonymous && t != Bottom)
 
   private def unsatisfiableClasses(state: ReasonerState): Set[AtomicConcept] =
     state.closureSubsBySuperclass(Bottom).collect { case term: AtomicConcept if term != Bottom => term }

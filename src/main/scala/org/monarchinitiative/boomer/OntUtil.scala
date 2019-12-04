@@ -20,18 +20,6 @@ object OntUtil {
 
   private val HasProbability = AnnotationProperty("http://semanticscience.org/resource/SIO_000638")
 
-  //  def readProbabilisticOntology(file: File): ZIO[Blocking, Throwable, (Set[Axiom], Set[HypotheticalAxiom])] = for {
-  //    manager <- Task.effect(OWLManager.createOWLOntologyManager())
-  //    inFile <- Task.effect(IRI.create(file))
-  //    ontology <- effectBlocking(manager.loadOntology(inFile))
-  //    (assertedOWLAxioms, hypotheticalOWLAxioms) = ontology.getAxioms(Imports.INCLUDED).asScala.toSet.partitionMap(splitHypothetical)
-  //    assertedAxioms = assertedOWLAxioms.flatMap(Bridge.convertAxiom)
-  //    hypotheticalAxioms <- ZIO.sequence(hypotheticalOWLAxioms.map { case (ax, prob) =>
-  //      ZIO.fromOption(Bridge.convertAxiom(ax).headOption.collect { case ci: ConceptInclusion => ci }).map(HypotheticalAxiom(_, prob))
-  //        .mapError(_ => BoomError(s"Subclass axiom doesn't map one-to-one to Whelk concept inclusion: $ax"))
-  //    })
-  //  } yield (assertedAxioms, hypotheticalAxioms.toSet)
-
   private[this] def splitHypothetical(axiom: OWLAxiom): Either[OWLAxiom, (OWLSubClassOfAxiom, Double)] = axiom match {
     case sco @ SubClassOf(annotations, _, _) =>
       val maybeProbability = annotations.collectFirst {
@@ -85,35 +73,5 @@ object OntUtil {
     val id = items(1).trim
     s"http://purl.obolibrary.org/obo/${prefix}_$id"
   }
-
-  //  private def findLiteralValue(model: Model, subject: Resource, predicate: URI): Task[Literal] = {
-  //    val literals = model.filter(subject, predicate, null, null).asScala.map(_.getObject).collect {
-  //      case l: Literal => l
-  //    }
-  //    ZIO.fromOption(literals.headOption).mapError(_ => BoomError(s"Could not find triple with appropriate value for s=$subject and p=$predicate"))
-  //  }
-  //
-  //  private def findDoubleValue(model: Model, subject: Resource, predicate: URI): Task[Double] = {
-  //    val doubles = model.filter(subject, predicate, null, null).asScala.map(_.getObject).collect {
-  //      case l: Literal => Task.effect(l.doubleValue)
-  //    }
-  //    Task.require(BoomError("Could not find triple with double value"))(ZIO.sequence(doubles).map(_.headOption))
-  //  }
-  //
-  //
-  //  private def modelToOntology(model: Model): Task[Set[Axiom]] = ZIO.effect {
-  //    val source = new RioMemoryTripleSource(model)
-  //    val manager = OWLManager.createOWLOntologyManager()
-  //    manager.setOntologyLoaderConfiguration(new OWLOntologyLoaderConfiguration().setMissingImportHandlingStrategy(MissingImportHandlingStrategy.THROW_EXCEPTION))
-  //    manager.setIRIMappers(Collections.emptySet())
-  //    val parser = new RioParserImpl(new RioRDFXMLDocumentFormatFactory())
-  //    val ontology = manager.createOntology()
-  //    parser.parse(source, ontology, new OWLOntologyLoaderConfiguration())
-  //    Bridge.ontologyToAxioms(ontology)
-  //  }
-  //
-  //  private def openInputStream(file: File): Task[FileInputStream] = ZIO.effect(new FileInputStream(file))
-  //
-  //  private def closeInputStream(input: InputStream): UIO[Unit] = UIO(input.close())
 
 }
