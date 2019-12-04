@@ -20,9 +20,8 @@ fork in Test := true
 
 libraryDependencies ++= {
   Seq(
-    "org.geneontology"       %% "whelk"               % "0.4-SNAPSHOT",
+    "org.geneontology"       %% "whelk"               % "0.4",
     "dev.zio"                %% "zio"                 % "1.0.0-RC17",
-    "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.13",
-    "org.phenoscape"         %% "scowl"               % "1.3.4"
+    "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.13"
   )
 }

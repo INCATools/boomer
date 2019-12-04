@@ -5,26 +5,14 @@ import java.util.UUID
 
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{AtomicConcept, ConceptInclusion, Conjunction}
-import org.monarchinitiative.boomer.Boom.{AlternativesGroup, BoomError, Proposal}
-import org.phenoscape.scowl._
-import org.semanticweb.owlapi.model._
+import org.monarchinitiative.boomer.Boom.BoomError
+import org.monarchinitiative.boomer.Model.{AlternativesGroup, Proposal}
 import zio._
 import zio.blocking._
 
 import scala.io.Source
 
 object OntUtil {
-
-  private val HasProbability = AnnotationProperty("http://semanticscience.org/resource/SIO_000638")
-
-  private[this] def splitHypothetical(axiom: OWLAxiom): Either[OWLAxiom, (OWLSubClassOfAxiom, Double)] = axiom match {
-    case sco @ SubClassOf(annotations, _, _) =>
-      val maybeProbability = annotations.collectFirst {
-        case Annotation(_, HasProbability, value ^^ XSDDouble) => value.toDoubleOption.getOrElse(0.0)
-      }
-      maybeProbability.map(prob => Right(sco -> prob)).getOrElse(Left(sco))
-    case other                               => Left(other)
-  }
 
   def readPTable(file: File): ZIO[Blocking, Throwable, Set[AlternativesGroup]] = for {
     source <- Task.effect(Source.fromFile(file, "utf-8"))

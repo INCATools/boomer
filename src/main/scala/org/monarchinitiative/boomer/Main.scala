@@ -3,7 +3,7 @@ package org.monarchinitiative.boomer
 import java.io.{File, PrintWriter}
 
 import org.geneontology.whelk.Bridge
-import org.monarchinitiative.boomer.Boom.{Init, Proposal, SelectedClump, SelectedProposal, Selection}
+import org.monarchinitiative.boomer.Model._
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.model.IRI
 import zio._
