@@ -1,7 +1,7 @@
 package org.monarchinitiative.boomer
 
 import org.geneontology.whelk.BuiltIn._
-import org.geneontology.whelk.{AtomicConcept, Axiom, ConceptInclusion, Entity, Reasoner, ReasonerState}
+import org.geneontology.whelk._
 import zio._
 
 import scala.Ordering.Double.TotalOrdering

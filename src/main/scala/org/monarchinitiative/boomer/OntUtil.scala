@@ -4,17 +4,14 @@ import java.io.File
 import java.util.UUID
 
 import org.geneontology.whelk.BuiltIn.Bottom
-import org.geneontology.whelk.{AtomicConcept, Axiom, Bridge, ConceptInclusion, Conjunction}
+import org.geneontology.whelk.{AtomicConcept, ConceptInclusion, Conjunction}
 import org.monarchinitiative.boomer.Boom.{AlternativesGroup, BoomError, Proposal}
-import org.semanticweb.owlapi.apibinding.OWLManager
+import org.phenoscape.scowl._
 import org.semanticweb.owlapi.model._
-import org.semanticweb.owlapi.model.parameters.Imports
 import zio._
 import zio.blocking._
-import org.phenoscape.scowl._
 
 import scala.io.Source
-import scala.jdk.CollectionConverters._
 
 object OntUtil {
 
