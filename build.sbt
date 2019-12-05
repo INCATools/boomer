@@ -22,6 +22,6 @@ libraryDependencies ++= {
   Seq(
     "org.geneontology"       %% "whelk"               % "0.4",
     "dev.zio"                %% "zio"                 % "1.0.0-RC17",
-    "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.13"
+    "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.14"
   )
 }
