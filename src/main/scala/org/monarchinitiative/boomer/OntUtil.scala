@@ -38,7 +38,7 @@ object OntUtil {
       } yield {
         AlternativesGroup(Set(
           Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", rightNotSubOfLeft + ConceptInclusion(left, right), probProperSubLeftRight),
-          Proposal(s"$rightCURIE ProperSubClassOf $leftCURIE", leftNotSubOfRight + ConceptInclusion(right, left), probProperSubRightLeft),
+          Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE", leftNotSubOfRight + ConceptInclusion(right, left), probProperSubRightLeft),
           Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
           Proposal(s"$leftCURIE SiblingOf $rightCURIE", leftNotSubOfRight ++ rightNotSubOfLeft, probNoSubsumption)
         ).filter(_.probability > 0.0))
