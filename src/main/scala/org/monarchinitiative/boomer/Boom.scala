@@ -2,17 +2,32 @@ package org.monarchinitiative.boomer
 
 import org.geneontology.whelk.BuiltIn._
 import org.geneontology.whelk._
-import org.monarchinitiative.boomer.Model._
+import org.monarchinitiative.boomer.Model.{Selection, _}
+import org.monarchinitiative.boomer.Util.BisectSearchOp
 import zio._
+import zio.random.Random
 
 import scala.Ordering.Double.TotalOrdering
 import scala.annotation.tailrec
+import scala.collection.Searching.InsertionPoint
+import scala.math.Ordering
 
 object Boom {
 
   def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[AlternativesGroup]): Task[List[Selection]] = {
     val whelk = Reasoner.assert(assertions)
     println("Done first classification")
+    //    Random.Live.random.shuffle(probabilisticOntology.toList).flatMap { shuffledHypotheticals =>
+    //      val orderedHypotheticals = shuffledHypotheticals.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+    //      //val orderedHypotheticals = shuffledHypotheticals
+    //      val maxProbability = orderedHypotheticals.map(ah => Math.log(ah.mostProbable.probability)).sum
+    //      search(List(Init(orderedHypotheticals, whelk))).map { selected =>
+    //        println(s"Max probability: $maxProbability")
+    //        val jointProbability = selected.map(s => Math.log(s.probability)).sum
+    //        println(jointProbability)
+    //        selected
+    //      }
+    //    }
     val orderedHypotheticals = probabilisticOntology.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
     val maxProbability = orderedHypotheticals.map(ah => Math.log(ah.mostProbable.probability)).sum
     search(List(Init(orderedHypotheticals, whelk))).map { selected =>
@@ -31,41 +46,38 @@ object Boom {
         prev.remainingPossibilities match {
           case Nil               => ZIO.succeed(selected)
           case next :: remaining => tryAdding(next, remaining, prev.reasonerState) match {
-            case None            => searchForConflict(next, selected, remaining)
+            case None            => searchForConflict(next, selected, remaining) match {
+              case None              => ZIO.fail(BoomError("We aren't prepared for clumps that can't be added!"))
+              case Some(nowSelected) => search(nowSelected)
+            }
             case Some(selection) => search(selection :: selected)
           }
         }
     }
 
-  @tailrec
-  private def searchForConflict(possibility: Possibility, selected: List[Selection], newRemaining: List[Possibility]): Task[List[Selection]] =
-    selected match {
-      case Nil                             => ZIO.fail(BoomError("Reached beginning trying to find conflicting group"))
-      case first :: (rest @ (second :: _)) =>
-        val compatible = possibility.sorted.exists { proposal =>
-          val newReasonerState = Reasoner.assert(proposal.axioms, second.reasonerState)
-          isCoherent(newReasonerState)
-        }
-        if (compatible) {
-          println(s"Making clump at ${rest.size}")
-          val clump = first match {
-            case SelectedProposal(_, ag, _, _)         => Clump(Set(ag)).add(possibility)
-            case SelectedClump(_, c @ Clump(gs), _, _) => c.add(possibility)
-          }
-          println(clump)
-          val updatedRemaining = newRemaining.filterNot(_ == possibility)
-          tryAdding(clump, updatedRemaining, second.reasonerState) match {
-            case None            => ZIO.fail(BoomError("We aren't prepared for clumps that can't be added!"))
-            case Some(selection) => search(selection :: rest)
-          }
-        } else {
-          val remainingPossibility = first match {
-            case SelectedProposal(_, ag, _, _) => ag
-            case SelectedClump(_, c, _, _)     => c
-          }
-          searchForConflict(possibility, rest, remainingPossibility :: newRemaining)
-        }
+  private def searchForConflict(possibility: Possibility, selected: List[Selection], newRemaining: List[Possibility]): Option[List[Selection]] = {
+    val InsertionPoint(index) = selected.bisect { selection =>
+      possibility.sorted.exists { proposal =>
+        val newReasonerState = Reasoner.assert(proposal.axioms, selection.reasonerState)
+        isIncoherent(newReasonerState)
+      }
     }
+    //FIXME check for index edge cases
+    val (newlyRemaining, stillSelectedPlusConflict) = selected.splitAt(index - 1)
+    val conflict :: stillSelected = stillSelectedPlusConflict
+    println(s"Making clump at $index")
+    val clump = conflict match {
+      case SelectedProposal(_, ag, _, _)         => Clump(Set(ag)).add(possibility)
+      case SelectedClump(_, c @ Clump(gs), _, _) => c.add(possibility)
+    }
+    println(clump)
+    val newlyRemainingPossibilties = newlyRemaining.map {
+      case SelectedProposal(_, ag, _, _) => ag
+      case SelectedClump(_, c, _, _)     => c
+    }
+    val updatedRemaining = newlyRemainingPossibilties.reverse ::: newRemaining
+    tryAdding(clump, updatedRemaining, stillSelected.head.reasonerState).map(_ :: stillSelected)
+  }
 
   private def tryAdding(possibility: Possibility, remaining: List[Possibility], reasonerState: ReasonerState): Option[Selection] = {
     possibility match {
