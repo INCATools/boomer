@@ -1,6 +1,7 @@
 package org.monarchinitiative.boomer
 
 import java.io.{File, PrintWriter}
+import java.util.Date
 
 import org.geneontology.whelk.Bridge
 import org.monarchinitiative.boomer.Model._
@@ -12,6 +13,7 @@ object Main extends App {
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     val program = for {
+      start <- ZIO.effect(System.currentTimeMillis())
       ptable <- OntUtil.readPTable(new File(args(0)))
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(args(1)))))
       assertions = Bridge.ontologyToAxioms(ont)
@@ -20,6 +22,8 @@ object Main extends App {
       writer <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8"))
       _ <- ZIO.foreach(selections) { selection => ZIO.effect(writer.write(s"${selection.label}\n")) }
       _ <- ZIO.effect(writer.close())
+      end <- ZIO.effect(System.currentTimeMillis())
+      _ <- ZIO.effect(println(s"${(end - start) / 1000}s"))
     } yield ()
     program.fold(error => {
       error.printStackTrace()
