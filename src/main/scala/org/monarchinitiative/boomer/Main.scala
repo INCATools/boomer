@@ -1,7 +1,6 @@
 package org.monarchinitiative.boomer
 
 import java.io.{File, PrintWriter}
-import java.util.Date
 
 import org.geneontology.whelk.Bridge
 import org.monarchinitiative.boomer.Model._

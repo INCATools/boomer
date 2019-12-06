@@ -3,6 +3,7 @@ package org.monarchinitiative.boomer
 import java.io.File
 import java.util.UUID
 
+import org.apache.commons.codec.digest.DigestUtils
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{AtomicConcept, ConceptInclusion, Conjunction}
 import org.monarchinitiative.boomer.Boom.BoomError
@@ -13,6 +14,8 @@ import zio.blocking._
 import scala.io.Source
 
 object OntUtil {
+
+  val DisjointSiblingPrefix = "http://boom.monarchinitiative.org/vocab/disjoint_sibling#"
 
   def readPTable(file: File): ZIO[Blocking, Throwable, Set[AlternativesGroup]] = for {
     source <- Task.effect(Source.fromFile(file, "utf-8"))
@@ -33,14 +36,14 @@ object OntUtil {
         probProperSubRightLeft <- Task.effect(columns(3).trim.toDouble)
         probEquivalent <- Task.effect(columns(4).trim.toDouble)
         probNoSubsumption <- Task.effect(columns(5).trim.toDouble)
-        rightNotSubOfLeft <- negateConceptInclusion(ConceptInclusion(right, left))
-        leftNotSubOfRight <- negateConceptInclusion(ConceptInclusion(left, right))
+        disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
+        disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
       } yield {
         AlternativesGroup(Set(
-          Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", rightNotSubOfLeft + ConceptInclusion(left, right), probProperSubLeftRight),
-          Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE", leftNotSubOfRight + ConceptInclusion(right, left), probProperSubRightLeft),
+          Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right), probProperSubLeftRight),
+          Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE", disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left), probProperSubRightLeft),
           Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
-          Proposal(s"$leftCURIE SiblingOf $rightCURIE", leftNotSubOfRight ++ rightNotSubOfLeft, probNoSubsumption)
+          Proposal(s"$leftCURIE SiblingOf $rightCURIE", disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
         ).filter(_.probability > 0.0))
       }
     } else Task.fail(BoomError(s"Invalid ptable line: $line"))
@@ -48,8 +51,20 @@ object OntUtil {
 
   def negateConceptInclusion(axiom: ConceptInclusion): Task[Set[ConceptInclusion]] = for {
     uuid <- ZIO.effect(UUID.randomUUID().toString)
-    newClass = AtomicConcept(uuid)
+    newClass = AtomicConcept(s"urn:uuid:$uuid")
   } yield Set(ConceptInclusion(newClass, axiom.subclass), ConceptInclusion(Conjunction(newClass, axiom.superclass), Bottom))
+
+  /**
+   * This produces the same axioms as negating the reversed concept inclusion (superclass/subclass).
+   * It is specialized for two named classes so that it can produce a deterministic IRI for
+   * the generated sibling class.
+   */
+  def disjointSibling(subclass: AtomicConcept, superclass: AtomicConcept): Set[ConceptInclusion] = {
+    val text = s"${subclass.id}${superclass.id}"
+    val hash = DigestUtils.sha1Hex(text)
+    val sibling = AtomicConcept(s"$DisjointSiblingPrefix$hash")
+    Set(ConceptInclusion(sibling, superclass), ConceptInclusion(Conjunction(sibling, subclass), Bottom))
+  }
 
   //FIXME use prefix mappings, error handling
   private def parseCURIE(curie: String): String = {
