@@ -14,15 +14,20 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
 javaOptions += "-Xmx4G"
 
-testFrameworks += new TestFramework("utest.runner.Framework")
+testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 
 fork in Test := true
+
+val zioVersion = "1.0.0-RC17"
 
 libraryDependencies ++= {
   Seq(
     "org.geneontology"       %% "whelk"               % "0.4",
-    "dev.zio"                %% "zio"                 % "1.0.0-RC17",
+    "dev.zio"                %% "zio"                 % zioVersion,
+    "org.phenoscape"         %% "scowl"               % "1.3.4",
     "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.14",
-    "commons-codec"          %  "commons-codec"       % "1.13"
+    "commons-codec"          %  "commons-codec"       % "1.13",
+    "dev.zio"                %% "zio-test"            % zioVersion % Test,
+    "dev.zio"                %% "zio-test-sbt"        % zioVersion % Test
   )
 }
