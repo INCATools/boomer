@@ -1,0 +1,129 @@
+Prefix(:=<http://example.org/ontutil/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+
+Ontology(<http://example.org/ontutil/>
+
+Declaration(Class(<http://boom.monarchinitiative.org/vocab/Proposal>))
+Declaration(Class(<http://boom.monarchinitiative.org/vocab/Uncertainty>))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(Class(:X))
+Declaration(Class(:XASib))
+Declaration(Class(:Y))
+Declaration(NamedIndividual(:Proposal))
+Declaration(NamedIndividual(:proposal1-1))
+Declaration(NamedIndividual(:proposal1-2))
+Declaration(NamedIndividual(:proposal1-3))
+Declaration(NamedIndividual(:proposal2-1))
+Declaration(NamedIndividual(:proposal2-2))
+Declaration(NamedIndividual(:proposal2-3))
+Declaration(NamedIndividual(:uncertainty1))
+Declaration(NamedIndividual(:uncertainty2))
+Declaration(AnnotationProperty(<http://purl.org/dc/terms/isPartOf>))
+Declaration(AnnotationProperty(<http://semanticscience.org/resource/SIO_000638>))
+############################
+#   Annotation Properties
+############################
+
+# Annotation Property: <http://semanticscience.org/resource/SIO_000638> (has probability)
+
+AnnotationAssertion(rdfs:label <http://semanticscience.org/resource/SIO_000638> "has probability")
+
+
+
+############################
+#   Classes
+############################
+
+# Class: :A (:A)
+
+EquivalentClasses(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal1-2) :A :X)
+SubClassOf(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal1-3) :A :X)
+
+# Class: :B (:B)
+
+EquivalentClasses(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal2-3) :B :Y)
+SubClassOf(:B :A)
+SubClassOf(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal2-2) :B :Y)
+
+# Class: :C (:C)
+
+SubClassOf(:C :B)
+
+# Class: :X (:X)
+
+SubClassOf(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal1-1) :X :A)
+SubClassOf(:X :Y)
+DisjointClasses(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal1-1) :X :XASib)
+
+# Class: :XASib (:XASib)
+
+SubClassOf(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal1-1) :XASib :A)
+
+# Class: :Y (:Y)
+
+SubClassOf(Annotation(<http://purl.org/dc/terms/isPartOf> :proposal2-1) :Y :B)
+
+
+############################
+#   Named Individuals
+############################
+
+# Individual: :proposal1-1 (X SubClassOf A)
+
+AnnotationAssertion(<http://purl.org/dc/terms/isPartOf> :proposal1-1 :uncertainty1)
+AnnotationAssertion(<http://semanticscience.org/resource/SIO_000638> :proposal1-1 "0.1"^^xsd:double)
+AnnotationAssertion(rdfs:label :proposal1-1 "X SubClassOf A")
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Proposal> :proposal1-1)
+
+# Individual: :proposal1-2 (X Equiv A)
+
+AnnotationAssertion(<http://purl.org/dc/terms/isPartOf> :proposal1-2 :uncertainty1)
+AnnotationAssertion(<http://semanticscience.org/resource/SIO_000638> :proposal1-2 "0.1"^^xsd:double)
+AnnotationAssertion(rdfs:label :proposal1-2 "X Equiv A")
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Proposal> :proposal1-2)
+
+# Individual: :proposal1-3 (X SuperClassOf A)
+
+AnnotationAssertion(<http://purl.org/dc/terms/isPartOf> :proposal1-3 :uncertainty1)
+AnnotationAssertion(<http://semanticscience.org/resource/SIO_000638> :proposal1-3 "0.8"^^xsd:double)
+AnnotationAssertion(rdfs:label :proposal1-3 "X SuperClassOf A")
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Proposal> :proposal1-3)
+
+# Individual: :proposal2-1 (Y SubClassOf B)
+
+AnnotationAssertion(<http://purl.org/dc/terms/isPartOf> :proposal2-1 :uncertainty2)
+AnnotationAssertion(<http://semanticscience.org/resource/SIO_000638> :proposal2-1 "0.4"^^xsd:double)
+AnnotationAssertion(rdfs:label :proposal2-1 "Y SubClassOf B")
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Proposal> :proposal2-1)
+
+# Individual: :proposal2-2 (Y SuperClassOf B)
+
+AnnotationAssertion(<http://purl.org/dc/terms/isPartOf> :proposal2-2 :uncertainty2)
+AnnotationAssertion(<http://semanticscience.org/resource/SIO_000638> :proposal2-2 "0.2"^^xsd:double)
+AnnotationAssertion(rdfs:label :proposal2-2 "Y SuperClassOf B")
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Proposal> :proposal2-2)
+
+# Individual: :proposal2-3 (Y Equiv B)
+
+AnnotationAssertion(<http://purl.org/dc/terms/isPartOf> :proposal2-3 :uncertainty2)
+AnnotationAssertion(<http://semanticscience.org/resource/SIO_000638> :proposal2-3 "0.4"^^xsd:double)
+AnnotationAssertion(rdfs:label :proposal2-3 "Y Equiv B")
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Proposal> :proposal2-3)
+
+# Individual: :uncertainty1 (:uncertainty1)
+
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Uncertainty> :uncertainty1)
+
+# Individual: :uncertainty2 (:uncertainty2)
+
+ClassAssertion(<http://boom.monarchinitiative.org/vocab/Uncertainty> :uncertainty2)
+
+
+)

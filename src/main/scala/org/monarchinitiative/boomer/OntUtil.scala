@@ -69,7 +69,7 @@ object OntUtil {
     po <- partitionOntology(ontology)
   } yield po
 
-  private def partitionOntology(ontology: OWLOntology): Task[ProbabilisticOntology] = {
+  def partitionOntology(ontology: OWLOntology): Task[ProbabilisticOntology] = {
     val groups = EntitySearcher.getInstances(UncertaintyClass, ontology).asScala.toSet[OWLIndividual].map(_ -> Set.empty[Proposal]).toMap
     val proposals: Task[(Map[OWLIndividual, Set[Proposal]], Set[OWLAxiom])] =
       EntitySearcher.getInstances(ProposalClass, ontology).asScala.toSet.foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) {
