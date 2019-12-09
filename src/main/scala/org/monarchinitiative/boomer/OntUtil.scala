@@ -7,11 +7,14 @@ import org.apache.commons.codec.digest.DigestUtils
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{AtomicConcept, Axiom, Bridge, ConceptInclusion, Conjunction}
 import org.monarchinitiative.boomer.Boom.BoomError
-import org.monarchinitiative.boomer.Model.{AlternativesGroup, Proposal}
+
 import org.openrdf.model.vocabulary.DCTERMS
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.model.{IRI, OWLAnnotation, OWLAnnotationProperty, OWLAnnotationSubject, OWLAnnotationValue, OWLAnonymousIndividual, OWLAxiom, OWLIndividual, OWLNamedIndividual, OWLOntology, OWLSubClassOfAxiom}
 import org.semanticweb.owlapi.model.parameters.Imports
+
+import org.monarchinitiative.boomer.Model.{Uncertainty, Proposal}
+
 import zio._
 import zio.blocking._
 
@@ -30,14 +33,14 @@ object OntUtil {
   private val AlternativesGroupClass = Class("") //FIXME
   private val ProposalClass = Class("") //FIXME
 
-  def readPTable(file: File): ZIO[Blocking, Throwable, Set[AlternativesGroup]] = for {
+  def readPTable(file: File): ZIO[Blocking, Throwable, Set[Uncertainty]] = for {
     source <- Task.effect(Source.fromFile(file, "utf-8"))
     lines <- Task.effect(source.getLines())
     parsed <- Task.effect(lines.map(parsePTableLine).toList)
     entries <- ZIO.collectAll(parsed)
   } yield entries.toSet
 
-  private def parsePTableLine(line: String): Task[AlternativesGroup] = {
+  private def parsePTableLine(line: String): Task[Uncertainty] = {
     val columns = line.split("\\t", -1)
     if (columns.size == 6) {
       val leftCURIE = columns(0).trim
@@ -52,7 +55,7 @@ object OntUtil {
         disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
         disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
       } yield {
-        AlternativesGroup(Set(
+        Uncertainty(Set(
           Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right), probProperSubLeftRight),
           Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE", disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left), probProperSubRightLeft),
           Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
@@ -62,7 +65,7 @@ object OntUtil {
     } else Task.fail(BoomError(s"Invalid ptable line: $line"))
   }
 
-  final case class ProbabilisticOntology(axioms: Set[Axiom], hypotheticals: Set[AlternativesGroup])
+  final case class ProbabilisticOntology(axioms: Set[Axiom], hypotheticals: Set[Uncertainty])
 
   object ProbabilisticOntology {
 
@@ -115,7 +118,7 @@ object OntUtil {
     proposals.map {
       case (proposalGroups, axiomsToRemove) =>
         val ontAxioms = (ontology.getAxioms(Imports.INCLUDED).asScala.toSet -- axiomsToRemove).flatMap(Bridge.convertAxiom)
-        val groups = proposalGroups.values.map(ps => AlternativesGroup(ps)).toSet
+        val groups = proposalGroups.values.map(ps => Uncertainty(ps)).toSet
         ProbabilisticOntology(ontAxioms, groups)
     }
   }
