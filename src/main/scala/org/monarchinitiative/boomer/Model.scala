@@ -1,6 +1,6 @@
 package org.monarchinitiative.boomer
 
-import org.geneontology.whelk.{ConceptInclusion, ReasonerState}
+import org.geneontology.whelk.{Axiom, ConceptInclusion, ReasonerState}
 
 object Model {
 
@@ -72,6 +72,14 @@ object Model {
   final case class SelectedPerplexityProposal(selected: PerplexityProposal, clump: Perplexity, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState) extends Selection {
 
     override def probability: Double = selected.proposal.values.map(_.probability).product
+
+  }
+
+  final case class ProbabilisticOntology(axioms: Set[Axiom], uncertainties: Set[Uncertainty])
+
+  object ProbabilisticOntology {
+
+    val empty: ProbabilisticOntology = ProbabilisticOntology(Set.empty, Set.empty)
 
   }
 

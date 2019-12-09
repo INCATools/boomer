@@ -5,33 +5,30 @@ import java.util.UUID
 
 import org.apache.commons.codec.digest.DigestUtils
 import org.geneontology.whelk.BuiltIn.Bottom
-import org.geneontology.whelk.{AtomicConcept, Axiom, Bridge, ConceptInclusion, Conjunction}
+import org.geneontology.whelk.{Individual => _, _}
 import org.monarchinitiative.boomer.Boom.BoomError
-
+import org.monarchinitiative.boomer.Model.{ProbabilisticOntology, Proposal, Uncertainty}
 import org.openrdf.model.vocabulary.DCTERMS
+import org.phenoscape.scowl._
 import org.semanticweb.owlapi.apibinding.OWLManager
-import org.semanticweb.owlapi.model.{IRI, OWLAnnotation, OWLAnnotationProperty, OWLAnnotationSubject, OWLAnnotationValue, OWLAnonymousIndividual, OWLAxiom, OWLIndividual, OWLNamedIndividual, OWLOntology, OWLSubClassOfAxiom}
+import org.semanticweb.owlapi.model._
 import org.semanticweb.owlapi.model.parameters.Imports
-
-import org.monarchinitiative.boomer.Model.{Uncertainty, Proposal}
-
+import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
 import zio.blocking._
 
 import scala.io.Source
 import scala.jdk.CollectionConverters._
-import org.phenoscape.scowl._
-import org.semanticweb.owlapi.search.EntitySearcher
-import org.semanticweb.owlapi.vocab.{DublinCoreVocabulary, OWLRDFVocabulary}
 
 object OntUtil {
 
-  val DisjointSiblingPrefix = "http://boom.monarchinitiative.org/vocab/disjoint_sibling#"
+  val BoomPrefix = "http://boom.monarchinitiative.org/vocab"
+  val DisjointSiblingPrefix = s"$BoomPrefix/DisjointSibling"
   val HasProbability = "http://semanticscience.org/resource/SIO_000638"
   private val HasProbabilityAP = AnnotationProperty(HasProbability)
   private val IsPartOfAP = AnnotationProperty(DCTERMS.IS_PART_OF.stringValue)
-  private val AlternativesGroupClass = Class("") //FIXME
-  private val ProposalClass = Class("") //FIXME
+  private val UncertaintyClass = Class(s"$BoomPrefix/Uncertainty")
+  private val ProposalClass = Class(s"$BoomPrefix/Proposal")
 
   def readPTable(file: File): ZIO[Blocking, Throwable, Set[Uncertainty]] = for {
     source <- Task.effect(Source.fromFile(file, "utf-8"))
@@ -65,14 +62,6 @@ object OntUtil {
     } else Task.fail(BoomError(s"Invalid ptable line: $line"))
   }
 
-  final case class ProbabilisticOntology(axioms: Set[Axiom], hypotheticals: Set[Uncertainty])
-
-  object ProbabilisticOntology {
-
-    val empty = ProbabilisticOntology(Set.empty, Set.empty)
-
-  }
-
   def readProbabilisticOntology(file: File): ZIO[Blocking, Throwable, ProbabilisticOntology] = for {
     manager <- Task.effect(OWLManager.createOWLOntologyManager())
     inFile <- Task.effect(IRI.create(file))
@@ -81,7 +70,7 @@ object OntUtil {
   } yield po
 
   private def partitionOntology(ontology: OWLOntology): Task[ProbabilisticOntology] = {
-    val groups = EntitySearcher.getInstances(AlternativesGroupClass, ontology).asScala.toSet[OWLIndividual].map(_ -> Set.empty[Proposal]).toMap
+    val groups = EntitySearcher.getInstances(UncertaintyClass, ontology).asScala.toSet[OWLIndividual].map(_ -> Set.empty[Proposal]).toMap
     val proposals: Task[(Map[OWLIndividual, Set[Proposal]], Set[OWLAxiom])] =
       EntitySearcher.getInstances(ProposalClass, ontology).asScala.toSet.foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) {
         case (acc, ind) =>
@@ -136,7 +125,7 @@ object OntUtil {
   def disjointSibling(subclass: AtomicConcept, superclass: AtomicConcept): Set[ConceptInclusion] = {
     val text = s"${subclass.id}${superclass.id}"
     val hash = DigestUtils.sha1Hex(text)
-    val sibling = AtomicConcept(s"$DisjointSiblingPrefix$hash")
+    val sibling = AtomicConcept(s"$DisjointSiblingPrefix#$hash")
     Set(ConceptInclusion(sibling, superclass), ConceptInclusion(Conjunction(sibling, subclass), Bottom))
   }
 
