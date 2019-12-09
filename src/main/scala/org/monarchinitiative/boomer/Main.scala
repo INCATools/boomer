@@ -32,8 +32,8 @@ object Main extends App {
 
   private def choices(selection: Selection): Set[Proposal] = selection match {
     case Init(_, _)                          => Set.empty
-    case SelectedProposal(proposal, _, _, _) => Set(proposal)
-    case SelectedClump(selected, _, _, _)    => selected.proposal.values.toSet
+    case SelectedProposal(proposal, _, _, _)           => Set(proposal)
+    case SelectedPerplexityProposal(selected, _, _, _) => selected.proposal.values.toSet
   }
 
 }

@@ -7,7 +7,7 @@ import org.apache.commons.codec.digest.DigestUtils
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{AtomicConcept, ConceptInclusion, Conjunction}
 import org.monarchinitiative.boomer.Boom.BoomError
-import org.monarchinitiative.boomer.Model.{AlternativesGroup, Proposal}
+import org.monarchinitiative.boomer.Model.{Uncertainty, Proposal}
 import zio._
 import zio.blocking._
 
@@ -17,14 +17,14 @@ object OntUtil {
 
   val DisjointSiblingPrefix = "http://boom.monarchinitiative.org/vocab/disjoint_sibling#"
 
-  def readPTable(file: File): ZIO[Blocking, Throwable, Set[AlternativesGroup]] = for {
+  def readPTable(file: File): ZIO[Blocking, Throwable, Set[Uncertainty]] = for {
     source <- Task.effect(Source.fromFile(file, "utf-8"))
     lines <- Task.effect(source.getLines())
     parsed <- Task.effect(lines.map(parsePTableLine).toList)
     entries <- ZIO.collectAll(parsed)
   } yield entries.toSet
 
-  private def parsePTableLine(line: String): Task[AlternativesGroup] = {
+  private def parsePTableLine(line: String): Task[Uncertainty] = {
     val columns = line.split("\\t", -1)
     if (columns.size == 6) {
       val leftCURIE = columns(0).trim
@@ -39,7 +39,7 @@ object OntUtil {
         disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
         disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
       } yield {
-        AlternativesGroup(Set(
+        Uncertainty(Set(
           Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right), probProperSubLeftRight),
           Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE", disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left), probProperSubRightLeft),
           Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
