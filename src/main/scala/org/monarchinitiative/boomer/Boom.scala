@@ -13,7 +13,7 @@ import scala.math.Ordering
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[AlternativesGroup]): Task[List[Selection]] = {
+  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[Uncertainty]): Task[List[Selection]] = {
     val whelk = Reasoner.assert(assertions)
     println("Done first classification")
     //    Random.Live.random.shuffle(probabilisticOntology.toList).flatMap { shuffledHypotheticals =>
@@ -27,9 +27,9 @@ object Boom {
     //        selected
     //      }
     //    }
-    val orderedHypotheticals = probabilisticOntology.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    val maxProbability = orderedHypotheticals.map(ah => Math.log(ah.mostProbable.probability)).sum
-    search(List(Init(orderedHypotheticals, whelk))).map { selected =>
+    val orderedAmbiguities = probabilisticOntology.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+    val maxProbability = orderedAmbiguities.map(ah => Math.log(ah.mostProbable.probability)).sum
+    search(List(Init(orderedAmbiguities, whelk))).map { selected =>
       println(s"Max probability: $maxProbability")
       val jointProbability = selected.map(s => Math.log(s.probability)).sum
       println(jointProbability)
@@ -42,7 +42,7 @@ object Boom {
     selected match {
       case Nil       => ZIO.fail(BoomError("Search must be called with at least an Init in previouslySelected"))
       case prev :: _ =>
-        prev.remainingPossibilities match {
+        prev.remainingAmbiguities match {
           case Nil               => ZIO.succeed(selected)
           case next :: remaining => tryAdding(next, remaining, prev.reasonerState) match {
             case None            => searchForConflict(next, selected, remaining) match {
@@ -54,9 +54,9 @@ object Boom {
         }
     }
 
-  private def searchForConflict(possibility: Possibility, selected: List[Selection], newRemaining: List[Possibility]): Option[List[Selection]] = {
+  private def searchForConflict(ambiguity: Ambiguity, selected: List[Selection], newRemaining: List[Ambiguity]): Option[List[Selection]] = {
     val InsertionPoint(index) = selected.bisect { selection =>
-      possibility.sorted.exists { proposal =>
+      ambiguity.sorted.exists { proposal =>
         val newReasonerState = Reasoner.assert(proposal.axioms, selection.reasonerState)
         isIncoherent(newReasonerState)
       }
@@ -65,22 +65,22 @@ object Boom {
     val (newlyRemaining, stillSelectedPlusConflict) = selected.splitAt(index - 1)
     val conflict :: stillSelected = stillSelectedPlusConflict
     println(s"Making clump at $index")
-    val clump = conflict match {
-      case SelectedProposal(_, ag, _, _)         => Clump(Set(ag)).add(possibility)
-      case SelectedClump(_, c @ Clump(gs), _, _) => c.add(possibility)
+    val perplexity = conflict match {
+      case SelectedProposal(_, ag, _, _)                           => Perplexity(Set(ag)).add(ambiguity)
+      case SelectedPerplexityProposal(_, c @ Perplexity(gs), _, _) => c.add(ambiguity)
     }
-    println(clump)
-    val newlyRemainingPossibilties = newlyRemaining.map {
-      case SelectedProposal(_, ag, _, _) => ag
-      case SelectedClump(_, c, _, _)     => c
+    println(perplexity)
+    val newlyRemainingAmbiguities = newlyRemaining.map {
+      case SelectedProposal(_, ag, _, _)          => ag
+      case SelectedPerplexityProposal(_, c, _, _) => c
     }
-    val updatedRemaining = newlyRemainingPossibilties.reverse ::: newRemaining
-    tryAdding(clump, updatedRemaining, stillSelected.head.reasonerState).map(_ :: stillSelected)
+    val updatedRemaining = newlyRemainingAmbiguities.reverse ::: newRemaining
+    tryAdding(perplexity, updatedRemaining, stillSelected.head.reasonerState).map(_ :: stillSelected)
   }
 
-  private def tryAdding(possibility: Possibility, remaining: List[Possibility], reasonerState: ReasonerState): Option[Selection] = {
+  private def tryAdding(possibility: Ambiguity, remaining: List[Ambiguity], reasonerState: ReasonerState): Option[Selection] = {
     possibility match {
-      case ag: AlternativesGroup =>
+      case ag: Uncertainty =>
         val maybeAdded = ag.sorted.to(LazyList).map { proposal =>
           val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
           proposal -> newReasonerState
@@ -89,13 +89,13 @@ object Boom {
           case (proposal, state) => SelectedProposal(proposal, ag, remaining, state)
         }
 
-      case clump: Clump =>
-        val maybeAdded = clump.sorted.to(LazyList).map { proposal =>
+      case perplexity: Perplexity =>
+        val maybeAdded = perplexity.sorted.to(LazyList).map { proposal =>
           val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
           proposal -> newReasonerState
         }.find { case (_, state) => isCoherent(state) }
         maybeAdded.map {
-          case (proposal, state) => SelectedClump(proposal, clump, remaining, state)
+          case (proposal, state) => SelectedPerplexityProposal(proposal, perplexity, remaining, state)
         }
     }
   }

@@ -12,44 +12,44 @@ object Model {
 
   final case class Proposal(label: String, axioms: Set[ConceptInclusion], probability: Double) extends GeneralizedProposal
 
-  sealed trait Possibility {
+  sealed trait Ambiguity {
 
     def sorted: List[GeneralizedProposal]
 
   }
 
-  final case class AlternativesGroup(groups: Set[Proposal]) extends Possibility {
+  final case class Uncertainty(proposals: Set[Proposal]) extends Ambiguity {
 
-    val mostProbable: Proposal = groups.maxBy(_.probability)
+    val mostProbable: Proposal = proposals.maxBy(_.probability)
 
-    val sorted: List[Proposal] = groups.toList.sortBy(_.probability)(Ordering[Double].reverse)
+    val sorted: List[Proposal] = proposals.toList.sortBy(_.probability)(Ordering[Double].reverse)
 
   }
 
-  final case class ClumpProposal(proposal: Map[AlternativesGroup, Proposal]) extends GeneralizedProposal {
+  final case class PerplexityProposal(proposal: Map[Uncertainty, Proposal]) extends GeneralizedProposal {
 
     def axioms: Set[ConceptInclusion] = proposal.values.flatMap(_.axioms).toSet
 
   }
 
-  final case class Clump(groups: Set[AlternativesGroup]) extends Possibility {
+  final case class Perplexity(uncertainties: Set[Uncertainty]) extends Ambiguity {
 
     //TODO this may grow too large
-    def sorted: List[ClumpProposal] =
-      groups.foldLeft(List(Map.empty[AlternativesGroup, Proposal])) { case (acc, group) =>
-        group.groups.toList.flatMap(p => acc.map(m => m.updated(group, p)))
-      }.sortBy(_.values.map(_.probability).product)(Ordering[Double].reverse).map(ClumpProposal)
+    def sorted: List[PerplexityProposal] =
+      uncertainties.foldLeft(List(Map.empty[Uncertainty, Proposal])) { case (acc, uncertainty) =>
+        uncertainty.proposals.toList.flatMap(p => acc.map(m => m.updated(uncertainty, p)))
+      }.sortBy(_.values.map(_.probability).product)(Ordering[Double].reverse).map(PerplexityProposal)
 
-    def add(possibility: Possibility): Clump = possibility match {
-      case ag: AlternativesGroup => Clump(groups + ag)
-      case Clump(gs)             => Clump(groups ++ gs)
+    def add(possibility: Ambiguity): Perplexity = possibility match {
+      case ag: Uncertainty => Perplexity(uncertainties + ag)
+      case Perplexity(gs)  => Perplexity(uncertainties ++ gs)
     }
 
   }
 
   sealed trait Selection {
 
-    def remainingPossibilities: List[Possibility]
+    def remainingAmbiguities: List[Ambiguity]
 
     def reasonerState: ReasonerState
 
@@ -57,19 +57,19 @@ object Model {
 
   }
 
-  final case class Init(remainingPossibilities: List[AlternativesGroup], reasonerState: ReasonerState) extends Selection {
+  final case class Init(remainingAmbiguities: List[Uncertainty], reasonerState: ReasonerState) extends Selection {
 
     override val probability: Double = 1.0
 
   }
 
-  final case class SelectedProposal(selected: Proposal, group: AlternativesGroup, remainingPossibilities: List[Possibility], reasonerState: ReasonerState) extends Selection {
+  final case class SelectedProposal(selected: Proposal, uncertainty: Uncertainty, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState) extends Selection {
 
     override def probability: Double = selected.probability
 
   }
 
-  final case class SelectedClump(selected: ClumpProposal, clump: Clump, remainingPossibilities: List[Possibility], reasonerState: ReasonerState) extends Selection {
+  final case class SelectedPerplexityProposal(selected: PerplexityProposal, clump: Perplexity, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState) extends Selection {
 
     override def probability: Double = selected.proposal.values.map(_.probability).product
 
