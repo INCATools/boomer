@@ -13,9 +13,7 @@ import scala.math.Ordering
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], probabilisticOntology: Set[Uncertainty]): Task[List[Selection]] = {
-    val whelk = Reasoner.assert(assertions)
-    println("Done first classification")
+  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty]): Task[List[Selection]] = {
     //    Random.Live.random.shuffle(probabilisticOntology.toList).flatMap { shuffledHypotheticals =>
     //      val orderedHypotheticals = shuffledHypotheticals.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
     //      //val orderedHypotheticals = shuffledHypotheticals
@@ -27,9 +25,14 @@ object Boom {
     //        selected
     //      }
     //    }
-    val orderedAmbiguities = probabilisticOntology.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    val maxProbability = orderedAmbiguities.map(ah => Math.log(ah.mostProbable.probability)).sum
-    search(List(Init(orderedAmbiguities, whelk))).map { selected =>
+    val orderedUncertainties = uncertainties.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+    evaluateInOrder(assertions, orderedUncertainties)
+  }
+
+  def evaluateInOrder(assertions: Set[Axiom], uncertainties: List[Uncertainty]): Task[List[Selection]] = {
+    val whelk = Reasoner.assert(assertions)
+    val maxProbability = uncertainties.map(ah => Math.log(ah.mostProbable.probability)).sum
+    resolveRemaining(List(Init(uncertainties, whelk))).map { selected =>
       println(s"Max probability: $maxProbability")
       val jointProbability = selected.map(s => Math.log(s.probability)).sum
       println(jointProbability)
@@ -38,7 +41,7 @@ object Boom {
   }
 
   @tailrec
-  def search(selected: List[Selection]): Task[List[Selection]] =
+  def resolveRemaining(selected: List[Selection]): Task[List[Selection]] =
     selected match {
       case Nil       => ZIO.fail(BoomError("Search must be called with at least an Init in previouslySelected"))
       case prev :: _ =>
@@ -47,9 +50,9 @@ object Boom {
           case next :: remaining => tryAdding(next, remaining, prev.reasonerState) match {
             case None            => searchForConflict(next, selected, remaining) match {
               case None              => ZIO.fail(BoomError("We aren't prepared for clumps that can't be added!"))
-              case Some(nowSelected) => search(nowSelected)
+              case Some(nowSelected) => resolveRemaining(nowSelected)
             }
-            case Some(selection) => search(selection :: selected)
+            case Some(selection) => resolveRemaining(selection :: selected)
           }
         }
     }

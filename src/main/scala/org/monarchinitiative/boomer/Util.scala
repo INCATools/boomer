@@ -7,8 +7,19 @@ object Util {
 
   implicit final class BisectSearchOp[A](val self: Seq[A]) extends AnyVal {
 
+    /**
+     * Find an index in the sequence where the result of the given predicate function
+     * changes from true to false. If there is more than one such index, the result
+     * will not necessarily be useful.
+     * For example, `List("a", "aa", "aaa").bisect(_.length < 3)` returns `InsertionPoint(2)`
+     */
     final def bisect(predicate: A => Boolean): InsertionPoint = bisect(0, self.size)(predicate)
 
+    /**
+     * Find an index within the specified range of the sequence where the result of the given predicate function
+     * changes from true to false. If there is more than one such index, the result
+     * * will not necessarily be useful.
+     */
     @tailrec
     final def bisect(from: Int, to: Int)(predicate: A => Boolean): InsertionPoint = {
       if (from < 0) bisect(0, to)(predicate)
