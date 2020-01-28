@@ -25,7 +25,7 @@ libraryDependencies ++= {
     "org.geneontology"       %% "whelk"               % "0.4",
     "dev.zio"                %% "zio"                 % zioVersion,
     "org.phenoscape"         %% "scowl"               % "1.3.4",
-    "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.14",
+    "net.sourceforge.owlapi" %  "owlapi-distribution" % "5.1.13",
     "commons-codec"          %  "commons-codec"       % "1.14",
     "dev.zio"                %% "zio-test"            % zioVersion % Test,
     "dev.zio"                %% "zio-test-sbt"        % zioVersion % Test
