@@ -51,7 +51,7 @@ object TestOntUtil extends DefaultRunnableSpec(
     testM("Probabilistic ontology can be loaded from OWL API") {
       for {
         probOnt <- OntUtil.readProbabilisticOntology(new File("src/test/resources/prob_ont_1.ofn"))
-      } yield assert(probOnt, equalTo(ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties)))
+      } yield assert(probOnt)(equalTo(ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties)))
     }
   )
 )
