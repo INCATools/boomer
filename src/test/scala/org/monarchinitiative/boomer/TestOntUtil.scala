@@ -6,8 +6,6 @@ import org.geneontology.whelk._
 import org.monarchinitiative.boomer.Model.{ProbabilisticOntology, Proposal, Uncertainty}
 import zio.test.Assertion._
 import zio.test._
-import zio.test.environment._
-import zio._
 
 object TestOntUtilData {
 
@@ -46,12 +44,13 @@ object TestOntUtilData {
 
 }
 
-object TestOntUtil extends DefaultRunnableSpec(
-  suite("TestOntUtil")(
+object TestOntUtil extends DefaultRunnableSpec {
+
+  def spec = suite("TestOntUtil")(
     testM("Probabilistic ontology can be loaded from OWL API") {
       for {
         probOnt <- OntUtil.readProbabilisticOntology(new File("src/test/resources/prob_ont_1.ofn"))
-      } yield assert(probOnt, equalTo(ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties)))
+      } yield assert(probOnt)(equalTo(ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties)))
     }
   )
-)
+}
