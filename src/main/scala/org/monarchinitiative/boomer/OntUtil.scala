@@ -129,6 +129,18 @@ object OntUtil {
     Set(ConceptInclusion(sibling, superclass), ConceptInclusion(Conjunction(sibling, subclass), Bottom))
   }
 
+  /**
+   * Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
+   *
+   * @param ci axiom to convert
+   * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
+   */
+  def whelkToOWL(ci: ConceptInclusion): Option[OWLSubClassOfAxiom] = ci match {
+    case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup)) => Some(SubClassOf(Class(sub), Class(sup)))
+    case _                                                        => None
+  }
+
+
   //FIXME use prefix mappings, error handling
   private def parseCURIE(curie: String): String = {
     val items = curie.split(":", 2)
