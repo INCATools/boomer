@@ -27,6 +27,7 @@ libraryDependencies ++= {
     "org.phenoscape"         %% "scowl"               % "1.3.4",
     "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.15",
     "commons-codec"          %  "commons-codec"       % "1.14",
+    "com.outr"               %% "scribe-slf4j"        % "2.7.12",
     "dev.zio"                %% "zio-test"            % zioVersion % Test,
     "dev.zio"                %% "zio-test-sbt"        % zioVersion % Test
   )
