@@ -5,6 +5,7 @@ import org.geneontology.whelk._
 import org.monarchinitiative.boomer.Model._
 import org.monarchinitiative.boomer.Util.BisectSearchOp
 import zio._
+import zio.random.Random
 
 import scala.Ordering.Double.TotalOrdering
 import scala.annotation.tailrec
@@ -13,20 +14,12 @@ import scala.math.Ordering
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty]): Task[List[Selection]] = {
-    //    Random.Live.random.shuffle(probabilisticOntology.toList).flatMap { shuffledHypotheticals =>
-    //      val orderedHypotheticals = shuffledHypotheticals.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    //      //val orderedHypotheticals = shuffledHypotheticals
-    //      val maxProbability = orderedHypotheticals.map(ah => Math.log(ah.mostProbable.probability)).sum
-    //      search(List(Init(orderedHypotheticals, whelk))).map { selected =>
-    //        println(s"Max probability: $maxProbability")
-    //        val jointProbability = selected.map(s => Math.log(s.probability)).sum
-    //        println(jointProbability)
-    //        selected
-    //      }
-    //    }
-    val orderedUncertainties = uncertainties.toList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    evaluateInOrder(assertions, orderedUncertainties)
+  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], shuffle: Boolean): ZIO[Random, Throwable, List[Selection]] = {
+    val uncertaintiesListZ = if (shuffle) random.shuffle(uncertainties.toList) else ZIO.succeed(uncertainties.toList)
+    uncertaintiesListZ.flatMap { uncertaintiesList =>
+      val orderedUncertainties = uncertaintiesList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+      evaluateInOrder(assertions, orderedUncertainties)
+    }
   }
 
   def evaluateInOrder(assertions: Set[Axiom], uncertainties: List[Uncertainty]): Task[List[Selection]] = {
