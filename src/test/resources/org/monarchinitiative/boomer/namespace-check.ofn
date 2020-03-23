@@ -1,0 +1,45 @@
+Prefix(:=<http://example.org/namespacecheck/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+
+Ontology(<http://example.org/namespacecheck/>
+
+Declaration(Class(<http://example.org/namespacecheck1/A>))
+Declaration(Class(<http://example.org/namespacecheck1/B>))
+Declaration(Class(<http://example.org/namespacecheck1/C>))
+Declaration(Class(<http://example.org/namespacecheck1/D>))
+Declaration(Class(<http://example.org/namespacecheck2/E>))
+Declaration(Class(<http://example.org/namespacecheck2/F>))
+Declaration(Class(<http://example.org/namespacecheck2/G>))
+Declaration(Class(<http://example.org/namespacecheck2/H>))
+############################
+#   Classes
+############################
+
+# Class: <http://example.org/namespacecheck1/A> (<http://example.org/namespacecheck1/A>)
+
+EquivalentClasses(<http://example.org/namespacecheck1/A> <http://example.org/namespacecheck1/B>)
+
+# Class: <http://example.org/namespacecheck1/C> (<http://example.org/namespacecheck1/C>)
+
+EquivalentClasses(<http://example.org/namespacecheck1/C> <http://example.org/namespacecheck2/F>)
+
+# Class: <http://example.org/namespacecheck1/D> (<http://example.org/namespacecheck1/D>)
+
+EquivalentClasses(<http://example.org/namespacecheck1/D> <http://example.org/namespacecheck2/E>)
+SubClassOf(<http://example.org/namespacecheck1/D> <http://example.org/namespacecheck1/C>)
+
+# Class: <http://example.org/namespacecheck2/F> (<http://example.org/namespacecheck2/F>)
+
+SubClassOf(<http://example.org/namespacecheck2/F> <http://example.org/namespacecheck2/E>)
+
+# Class: <http://example.org/namespacecheck2/G> (<http://example.org/namespacecheck2/G>)
+
+EquivalentClasses(<http://example.org/namespacecheck2/G> <http://example.org/namespacecheck2/H>)
+
+
+)

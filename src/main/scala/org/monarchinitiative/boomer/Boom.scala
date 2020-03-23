@@ -14,23 +14,25 @@ import scala.math.Ordering
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], shuffle: Boolean): ZIO[Random, Throwable, List[Selection]] = {
+  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], shuffle: Boolean, prohibitedPrefixEquivalences: Set[String]): ZIO[Random, Throwable, List[Selection]] = {
     val uncertaintiesListZ = if (shuffle) random.shuffle(uncertainties.toList) else ZIO.succeed(uncertainties.toList)
     uncertaintiesListZ.flatMap { uncertaintiesList =>
       val orderedUncertainties = uncertaintiesList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-      evaluateInOrder(assertions, orderedUncertainties)
+      evaluateInOrder(assertions, orderedUncertainties, prohibitedPrefixEquivalences)
     }
   }
 
-  def evaluateInOrder(assertions: Set[Axiom], uncertainties: List[Uncertainty]): Task[List[Selection]] = {
-    val whelk = Reasoner.assert(assertions)
-    val maxProbability = uncertainties.map(ah => Math.log(ah.mostProbable.probability)).sum
-    resolveRemaining(List(Init(uncertainties, whelk))).map { selected =>
-      println(s"Max probability: $maxProbability")
-      val jointProbability = selected.map(s => Math.log(s.probability)).sum
-      println(jointProbability)
-      selected
-    }
+  def evaluateInOrder(assertions: Set[Axiom], uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): Task[List[Selection]] = {
+    val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
+    if (isValid(whelk)) {
+      val maxProbability = uncertainties.map(ah => Math.log(ah.mostProbable.probability)).sum
+      resolveRemaining(List(Init(uncertainties, whelk))).map { selected =>
+        println(s"Max probability: $maxProbability")
+        val jointProbability = selected.map(s => Math.log(s.probability)).sum
+        println(jointProbability)
+        selected
+      }
+    } else ZIO.fail(BoomError("Given ontology is incoherent"))
   }
 
   @tailrec
@@ -54,7 +56,7 @@ object Boom {
     val InsertionPoint(index) = selected.bisect { selection =>
       ambiguity.sorted.exists { proposal =>
         val newReasonerState = Reasoner.assert(proposal.axioms, selection.reasonerState)
-        isIncoherent(newReasonerState)
+        !isValid(newReasonerState)
       }
     }
     //FIXME check for index edge cases
@@ -64,6 +66,9 @@ object Boom {
     val perplexity = conflict match {
       case SelectedProposal(_, ag, _, _)                           => Perplexity(Set(ag)).add(ambiguity)
       case SelectedPerplexityProposal(_, c @ Perplexity(gs), _, _) => c.add(ambiguity)
+      case Init(remainingAmbiguities, reasonerState)               =>
+        println("We're at the beginning, what do we do??")
+        ???
     }
     println(perplexity)
     val newlyRemainingAmbiguities = newlyRemaining.map {
@@ -80,7 +85,7 @@ object Boom {
         val maybeAdded = ag.sorted.to(LazyList).map { proposal =>
           val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
           proposal -> newReasonerState
-        }.find { case (_, state) => isCoherent(state) }
+        }.find { case (_, state) => isValid(state) }
         maybeAdded.map {
           case (proposal, state) => SelectedProposal(proposal, ag, remaining, state)
         }
@@ -89,7 +94,7 @@ object Boom {
         val maybeAdded = perplexity.sorted.to(LazyList).map { proposal =>
           val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
           proposal -> newReasonerState
-        }.find { case (_, state) => isCoherent(state) }
+        }.find { case (_, state) => isValid(state) }
         maybeAdded.map {
           case (proposal, state) => SelectedPerplexityProposal(proposal, perplexity, remaining, state)
         }
@@ -98,9 +103,14 @@ object Boom {
 
   private def jointProbability(selections: List[SelectedProposal]): Double = selections.map(s => Math.log(s.selected.probability)).sum
 
-  private def isCoherent(state: ReasonerState): Boolean = !isIncoherent(state)
+  private def isValid(state: ReasonerState): Boolean = !isIncoherent(state) && !hasNamespaceViolations(state)
 
-  private def isIncoherent(state: ReasonerState): Boolean = state.closureSubsBySuperclass(Bottom).exists(t => !t.isAnonymous && t != Bottom)
+  private def isIncoherent(state: ReasonerState): Boolean =
+    state.closureSubsBySuperclass(Bottom).exists(t => !t.isAnonymous && t != Bottom)
+
+  private def hasNamespaceViolations(state: ReasonerState): Boolean =
+    state.queueDelegates(NamespaceChecker.DelegateKey).asInstanceOf[NamespaceChecker].violations.nonEmpty
+
 
   private def unsatisfiableClasses(state: ReasonerState): Set[AtomicConcept] =
     state.closureSubsBySuperclass(Bottom).collect { case term: AtomicConcept if term != Bottom => term }

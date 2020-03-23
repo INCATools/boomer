@@ -10,6 +10,7 @@ import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
 import zio._
 import zio.blocking._
+import org.monarchinitiative.boomer.Util.close
 
 import scala.jdk.CollectionConverters._
 
@@ -21,19 +22,20 @@ object Main extends App {
       ptable <- OntUtil.readPTable(new File(args(0)))
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(args(1)))))
       shuffle <- ZIO.fromOption(args(2).toBooleanOption).mapError(_ => BoomError("Need true or false for 'shuffle'"))
+      prohibitedNamespaceEquivalences = parseProhibitedNamespaceEquivalences(args(3))
       assertions = Bridge.ontologyToAxioms(ont)
-      result <- Boom.evaluate(assertions, ptable, shuffle)
+      result <- Boom.evaluate(assertions, ptable, shuffle, prohibitedNamespaceEquivalences)
       selections = result.flatMap(choices)
       axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
-      writer <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8"))
-      _ <- ZIO.foreach(selections) { case (selection, best) =>
-        effectBlocking(writer.write(s"${selection.label}\t$best\n"))
+      _ <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8")).bracket(close(_)) { writer =>
+        ZIO.foreach(selections) { case (selection, best) =>
+          effectBlocking(writer.write(s"${selection.label}\t$best\n"))
+        }
       }
-      _ <- ZIO.effect(writer.close())
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
-      ontStream <- ZIO.effect(new FileOutputStream(new File("output.ofn")))
-      _ <- effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
-      _ <- ZIO.effect(ontStream.close())
+      _ <- ZIO.effect(new FileOutputStream(new File("output.ofn"))).bracket(close(_)) { ontStream =>
+        effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
+      }
       end <- ZIO.effect(System.currentTimeMillis())
       _ <- ZIO.effect(println(s"${(end - start) / 1000}s"))
     } yield ()
@@ -49,5 +51,7 @@ object Main extends App {
     case SelectedPerplexityProposal(selected, _, _, _) =>
       selected.proposal.toSet[(Uncertainty, Proposal)].map { case (uncertainty, proposal) => (proposal, proposal == uncertainty.mostProbable) }
   }
+
+  private def parseProhibitedNamespaceEquivalences(arg: String) = arg.split(" ", -1).toSet[String].map(_.trim)
 
 }
