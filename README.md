@@ -36,5 +36,5 @@ ECTO:0001628 SiblingOf NCIT:C45558      false
 ECTO:0001750 EquivalentTo NCIT:C29821   true
 ECTO:0002115 EquivalentTo Wikidata:Q21174350    true
 ```
-The `true`/`false` designate wheter the highest probability value was used.
+The `true`/`false` designate whether the highest probability value was used.
 
