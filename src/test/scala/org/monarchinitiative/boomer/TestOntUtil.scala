@@ -53,4 +53,5 @@ object TestOntUtil extends DefaultRunnableSpec {
       } yield assert(probOnt)(equalTo(ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties)))
     }
   )
+
 }

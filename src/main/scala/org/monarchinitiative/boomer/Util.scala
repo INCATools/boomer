@@ -1,5 +1,9 @@
 package org.monarchinitiative.boomer
 
+import java.io.Closeable
+
+import zio.UIO
+
 import scala.annotation.tailrec
 import scala.collection.Searching.InsertionPoint
 
@@ -18,7 +22,7 @@ object Util {
     /**
      * Find an index within the specified range of the sequence where the result of the given predicate function
      * changes from true to false. If there is more than one such index, the result
-     * * will not necessarily be useful.
+     * will not necessarily be useful.
      */
     @tailrec
     final def bisect(from: Int, to: Int)(predicate: A => Boolean): InsertionPoint = {
@@ -33,5 +37,7 @@ object Util {
     }
 
   }
+
+  def close(closeable: Closeable): UIO[Unit] = UIO(closeable.close())
 
 }
