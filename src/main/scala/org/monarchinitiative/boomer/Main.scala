@@ -22,7 +22,7 @@ object Main extends App {
       ptable <- OntUtil.readPTable(new File(args(0)))
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(args(1)))))
       shuffle <- ZIO.fromOption(args(2).toBooleanOption).mapError(_ => BoomError("Need true or false for 'shuffle'"))
-      prohibitedNamespaceEquivalences = parseProhibitedNamespaceEquivalences(args(3))
+      prohibitedNamespaceEquivalences = if (args.size > 3) parseProhibitedNamespaceEquivalences(args(3)) else Set.empty[String]
       assertions = Bridge.ontologyToAxioms(ont)
       result <- Boom.evaluate(assertions, ptable, shuffle, prohibitedNamespaceEquivalences)
       selections = result.flatMap(choices)
@@ -52,6 +52,6 @@ object Main extends App {
       selected.proposal.toSet[(Uncertainty, Proposal)].map { case (uncertainty, proposal) => (proposal, proposal == uncertainty.mostProbable) }
   }
 
-  private def parseProhibitedNamespaceEquivalences(arg: String) = arg.split(" ", -1).toSet[String].map(_.trim)
+  private def parseProhibitedNamespaceEquivalences(arg: String): Set[String] = arg.split(" ", -1).toSet[String].map(_.trim)
 
 }
