@@ -16,11 +16,11 @@ To run, `boomer` expects 4 arguments:
 1. A tsv file containing the probabilities of each IRI/term.
 2. Background ontology.
 3. `true` or `false`: 
-`true` (default) will shuffle mappings before sorting. This tests different orders on different runs if there are many mappings with the same probability.  
+`true` will shuffle mappings before sorting. This tests different orders on different runs if there are many mappings with the same probability.  
 `false` will not shuffle mappings.
 4. Space-separated list of term namespaces in which equivalences should be disallowed.
 
-The output is saved in file `output.txt` and contains a table of mappings between the backround ontology and the classes/terms specified in the probabilities file.
+The output is saved in file `output.txt` and contains a table of mappings between the background ontology and the classes/terms specified in the probabilities file.
 
 ## Example
 This command uses the `slim-exposure-probs.tsv` probability file and `slim-exposure-probs.owl` ontology file to produce mappings between classes the `slim-exposure-probs.owl` ontology and other ontology terms specified in the `slim-exposure-probs.tsv` file.  
