@@ -14,13 +14,12 @@ import scala.math.Ordering
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], shuffle: Boolean, prohibitedPrefixEquivalences: Set[String]): ZIO[Random, Throwable, List[Selection]] = {
-    val uncertaintiesListZ = if (shuffle) random.shuffle(uncertainties.toList) else ZIO.succeed(uncertainties.toList)
-    uncertaintiesListZ.flatMap { uncertaintiesList =>
-      val orderedUncertainties = uncertaintiesList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-      evaluateInOrder(assertions, orderedUncertainties, prohibitedPrefixEquivalences)
-    }
-  }
+  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], shuffle: Boolean, prohibitedPrefixEquivalences: Set[String]): ZIO[Random, Throwable, List[Selection]] =
+    for {
+      uncertaintiesList <- if (shuffle) random.shuffle(uncertainties.toList) else ZIO.succeed(uncertainties.toList)
+      orderedUncertainties = uncertaintiesList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+      selections <- evaluateInOrder(assertions, orderedUncertainties, prohibitedPrefixEquivalences)
+    } yield selections
 
   def evaluateInOrder(assertions: Set[Axiom], uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): Task[List[Selection]] = {
     val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))

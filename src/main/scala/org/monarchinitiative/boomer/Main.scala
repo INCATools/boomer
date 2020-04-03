@@ -10,6 +10,7 @@ import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
 import zio._
 import zio.blocking._
+import zio.console._
 import org.monarchinitiative.boomer.Util.close
 
 import scala.jdk.CollectionConverters._
@@ -39,10 +40,7 @@ object Main extends App {
       end <- ZIO.effect(System.currentTimeMillis())
       _ <- ZIO.effect(println(s"${(end - start) / 1000}s"))
     } yield ()
-    program.fold(error => {
-      error.printStackTrace()
-      1
-    }, _ => 0)
+    program.as(0).catchAllCause(cause => putStrLn(cause.prettyPrint).as(1))
   }
 
   private def choices(selection: Selection): Set[(Proposal, Boolean)] = selection match {
