@@ -14,24 +14,49 @@ import scala.math.Ordering
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], shuffle: Boolean, prohibitedPrefixEquivalences: Set[String]): ZIO[Random, Throwable, List[Selection]] =
-    for {
-      uncertaintiesList <- if (shuffle) random.shuffle(uncertainties.toList) else ZIO.succeed(uncertainties.toList)
-      orderedUncertainties = uncertaintiesList.sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-      selections <- evaluateInOrder(assertions, orderedUncertainties, prohibitedPrefixEquivalences)
-    } yield selections
-
-  def evaluateInOrder(assertions: Set[Axiom], uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): Task[List[Selection]] = {
+  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], prohibitedPrefixEquivalences: Set[String], windowCount: Int, runs: Int): ZIO[Random, Throwable, List[Map[Uncertainty, (Proposal, Boolean)]]] = {
     val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
-    if (isValid(whelk)) {
-      val maxProbability = uncertainties.map(ah => Math.log(ah.mostProbable.probability)).sum
-      resolveRemaining(List(Init(uncertainties, whelk))).map { selected =>
-        println(s"Max probability: $maxProbability")
+    val binnedUncertainties = Util.groupByValueWindows(uncertainties.toList, windowCount, (u: Uncertainty) => u.mostProbable.probability)
+      .filter(_.nonEmpty).reverse
+    binnedUncertainties.foreach { us =>
+      scribe.info(s"Bin size: ${us.size}; Most probable: ${us.map(_.mostProbable.probability).max}")
+    }
+    val maxProbability = uncertainties.toList.map(ah => Math.log(ah.mostProbable.probability)).sum
+    scribe.info(s"Max possible joint probability: $maxProbability")
+    val oneEvaluation = for {
+      orderedUncertainties <- shuffleWithinWindows(binnedUncertainties)
+      selections <- evaluateInOrder(whelk, orderedUncertainties, prohibitedPrefixEquivalences)
+    } yield selections.flatMap(collectChoices).toMap
+    ZIO.collectAllPar(List.fill(runs)(oneEvaluation))
+  }
+
+  private def shuffleWithinWindows(windows: List[List[Uncertainty]]): ZIO[Random, Nothing, List[Uncertainty]] =
+    ZIO.collectAll(windows.map(w => random.shuffle(w))).map(_.flatten)
+
+  def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): Task[List[Selection]] = {
+    if (isValid(initialState)) {
+      resolveRemaining(List(Init(uncertainties, initialState))).map { selected =>
         val jointProbability = selected.map(s => Math.log(s.probability)).sum
-        println(jointProbability)
+        scribe.info(s"Found joint probability: $jointProbability")
         selected
       }
     } else ZIO.fail(BoomError("Given ontology is incoherent"))
+  }
+
+  def organizeResults(results: List[Map[Uncertainty, (Proposal, Boolean)]]): (Map[Uncertainty, (Proposal, Boolean)], Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
+    val mostProbableResult = results.maxBy(_.map(_._2._1.probability).sum)
+    // Count, for each uncertainty, how often each proposal was found
+    val counted = results.flatMap(_.toList).groupMap(_._1)(_._2).map {
+      case (uncertainty, selections) => uncertainty -> selections.groupMap(identity)(_ => 1).view.mapValues(_.sum).toMap
+    }
+    (mostProbableResult, counted)
+  }
+
+  def collectChoices(selection: Selection): Set[(Uncertainty, (Proposal, Boolean))] = selection match {
+    case Init(_, _)                                    => Set.empty
+    case SelectedProposal(proposal, uncertainty, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
+    case SelectedPerplexityProposal(selected, _, _, _) =>
+      selected.proposal.toSet[(Uncertainty, Proposal)].map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
   }
 
   @tailrec
@@ -61,15 +86,15 @@ object Boom {
     //FIXME check for index edge cases
     val (newlyRemaining, stillSelectedPlusConflict) = selected.splitAt(index - 1)
     val conflict :: stillSelected = stillSelectedPlusConflict
-    println(s"Making clump at $index")
+    scribe.debug(s"Making clump at $index")
     val perplexity = conflict match {
       case SelectedProposal(_, ag, _, _)                           => Perplexity(Set(ag)).add(ambiguity)
       case SelectedPerplexityProposal(_, c @ Perplexity(gs), _, _) => c.add(ambiguity)
       case Init(remainingAmbiguities, reasonerState)               =>
-        println("We're at the beginning, what do we do??")
+        scribe.debug("We're at the beginning, what do we do??")
         ???
     }
-    println(perplexity)
+    scribe.debug(perplexity.toString)
     val newlyRemainingAmbiguities = newlyRemaining.map {
       case SelectedProposal(_, ag, _, _)          => ag
       case SelectedPerplexityProposal(_, c, _, _) => c
@@ -109,7 +134,6 @@ object Boom {
 
   private def hasNamespaceViolations(state: ReasonerState): Boolean =
     state.queueDelegates(NamespaceChecker.DelegateKey).asInstanceOf[NamespaceChecker].violations.nonEmpty
-
 
   private def unsatisfiableClasses(state: ReasonerState): Set[AtomicConcept] =
     state.closureSubsBySuperclass(Bottom).collect { case term: AtomicConcept if term != Bottom => term }

@@ -38,6 +38,26 @@ object Util {
 
   }
 
+  def groupByValueWindows[A](data: List[A], windowCount: Int, value: A => Double): List[List[A]] = {
+
+    def histo(bounds: List[Double], data: List[A]): List[List[A]] =
+      bounds match {
+        case Nil      => Nil
+        case _ :: Nil => List(data)
+        case h :: t   =>
+          val (l, r) = data.partition(elem => value(elem) < h)
+          l :: histo(t, r)
+      }
+
+    val bounds = (for {
+      i <- 1 to windowCount
+    } yield {
+      (1.0 / windowCount) * i
+    }).toList
+    histo(bounds, data)
+  }
+
+
   def close(closeable: Closeable): UIO[Unit] = UIO(closeable.close())
 
 }
