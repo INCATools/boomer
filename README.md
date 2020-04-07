@@ -12,23 +12,27 @@ sbt stage
 ```
 This will create the executable `./target/universal/stage/bin/boomer`.  
 
-To run, `boomer` expects 4 arguments:
-1. A tsv file containing the probabilities of each IRI/term.
-2. Background ontology.
-3. `true` or `false`: 
-`true` will shuffle mappings before sorting. This tests different orders on different runs if there are many mappings with the same probability.  
-`false` will not shuffle mappings.
-4. Space-separated list of term namespaces in which equivalences should be disallowed.
+To run, `boomer` expects 5 arguments:
+- `ptable`: A tsv file containing the probabilities of each IRI/term.
+- `ontology`: Background ontology. 
+- `prefixes`: A YAML file of term namespaces, used for expanding IDs in the probability table, and also for specifying namespaces in which equivalences should be disallowed.
+- `window-count`: Number of bins to divide the probability range into. Mappings within each bin will be shuffled on each run.
+- `runs`: Number of searches for coherent axiom configuration to conduct.
 
-The output is saved in file `output.txt` and contains a table of mappings between the background ontology and the classes/terms specified in the probabilities file.
+Three output files are produced:
+- `output.txt`: List of chosen mapping configurations in the most probable run.
+- `output-hotspots.txt`: List of mappings in which multiple configurations were chosen in different runs.
+- `output.ofn`: OWL ontology containing mapping axioms selected in the most probable run.
 
 ## Example
 This command uses the `slim-exposure-probs.tsv` probability file and `slim-exposure-probs.owl` ontology file to produce mappings between classes the `slim-exposure-probs.owl` ontology and other ontology terms specified in the `slim-exposure-probs.tsv` file.  
 
 ```bash
-./target/universal/stage/bin/boomer slim-exposure-probs.tsv slim-exposure.owl true "http://purl.obolibrary.org/obo/ECTO http://purl.obolibrary.org/obo/NCIT http://purl.obolibrary.org/obo/MRE http://purl.obolibrary.org/obo/ZECO"
+./target/universal/stage/bin/boomer --ptable slim-exposure-probs.tsv --ontology slim-exposure.owl --window-count 10 --runs 20 --prefixes prefixes.yaml
 ```
-The output file looks like this:
+
+The `output.txt` file looks like this:
+
 ```
 ECTO:0001606 SiblingOf Wikidata:Q21167711       false
 ECTO:0002110 EquivalentTo Wikidata:Q21173580    true
