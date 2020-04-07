@@ -22,13 +22,15 @@ val zioVersion = "1.0.0-RC18-2"
 
 libraryDependencies ++= {
   Seq(
-    "org.geneontology"       %% "whelk"               % "0.5.1",
-    "dev.zio"                %% "zio"                 % zioVersion,
-    "org.phenoscape"         %% "scowl"               % "1.3.4",
-    "net.sourceforge.owlapi" %  "owlapi-distribution" % "4.5.15",
-    "commons-codec"          %  "commons-codec"       % "1.14",
-    "com.outr"               %% "scribe-slf4j"        % "2.7.12",
-    "dev.zio"                %% "zio-test"            % zioVersion % Test,
-    "dev.zio"                %% "zio-test-sbt"        % zioVersion % Test
+    "org.geneontology"           %% "whelk"               % "0.5.1",
+    "dev.zio"                    %% "zio"                 % zioVersion,
+    "org.phenoscape"             %% "scowl"               % "1.3.4",
+    "net.sourceforge.owlapi"     %  "owlapi-distribution" % "4.5.15",
+    "commons-codec"              %  "commons-codec"       % "1.14",
+    "com.outr"                   %% "scribe-slf4j"        % "2.7.12",
+    "io.circe"                   %% "circe-yaml"          % "0.12.0",
+    "com.github.alexarchambault" %% "case-app"            % "2.0.0-M16",
+    "dev.zio"                    %% "zio-test"            % zioVersion % Test,
+    "dev.zio"                    %% "zio-test-sbt"        % zioVersion % Test
   )
 }

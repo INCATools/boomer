@@ -30,21 +30,21 @@ object OntUtil {
   private val UncertaintyClass = Class(s"$BoomPrefix/Uncertainty")
   private val ProposalClass = Class(s"$BoomPrefix/Proposal")
 
-  def readPTable(file: File): ZIO[Blocking, Throwable, Set[Uncertainty]] = for {
-    source <- Task.effect(Source.fromFile(file, "utf-8"))
-    lines <- Task.effect(source.getLines())
-    parsed <- Task.effect(lines.map(parsePTableLine).toList)
-    entries <- ZIO.collectAll(parsed)
-  } yield entries.toSet
+  def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Uncertainty]] =
+    Task.effect(Source.fromFile(file, "utf-8")).bracket(Util.close(_)) { source =>
+      ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
+    }.map(_.toSet)
 
-  private def parsePTableLine(line: String): Task[Uncertainty] = {
+  private def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Uncertainty] = {
     val columns = line.split("\\t", -1)
     if (columns.size == 6) {
       val leftCURIE = columns(0).trim
       val rightCURIE = columns(1).trim
-      val left = AtomicConcept(parseCURIE(leftCURIE))
-      val right = AtomicConcept(parseCURIE(rightCURIE))
       for {
+        leftID <- ZIO.fromOption(expandCURIE(leftCURIE, prefixes)).mapError(_ => BoomError(s"Failed expanding CURIE: $leftCURIE"))
+        rightID <- ZIO.fromOption(expandCURIE(rightCURIE, prefixes)).mapError(_ => BoomError(s"Failed expanding CURIE: $rightCURIE"))
+        left = AtomicConcept(leftID)
+        right = AtomicConcept(rightID)
         probProperSubLeftRight <- Task.effect(columns(2).trim.toDouble)
         probProperSubRightLeft <- Task.effect(columns(3).trim.toDouble)
         probEquivalent <- Task.effect(columns(4).trim.toDouble)
@@ -140,13 +140,16 @@ object OntUtil {
     case _                                                        => None
   }
 
-
-  //FIXME use prefix mappings, error handling
-  private def parseCURIE(curie: String): String = {
+  private def expandCURIE(curie: String, prefixes: Map[String, String]): Option[String] = {
+    val protocols = Set("http", "https", "ftp", "urn")
     val items = curie.split(":", 2)
-    val prefix = items(0).trim
-    val id = items(1).trim
-    s"http://purl.obolibrary.org/obo/${prefix}_$id"
+    if (items.size > 1) {
+      val prefix = items(0).trim
+      val id = items(1).trim
+      prefixes.get(prefix).map(ns => s"$ns$id").orElse {
+        if (protocols(prefix)) Some(curie) else None
+      }
+    } else Some(curie)
   }
 
 }
