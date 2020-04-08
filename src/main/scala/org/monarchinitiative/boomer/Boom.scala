@@ -13,7 +13,7 @@ import scala.collection.Searching.InsertionPoint
 
 object Boom {
 
-  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], prohibitedPrefixEquivalences: Set[String], windowCount: Int, runs: Int): ZIO[Random, Throwable, List[Map[Uncertainty, (Proposal, Boolean)]]] = {
+  def evaluate(assertions: Set[Axiom], uncertainties: Set[Uncertainty], prohibitedPrefixEquivalences: Set[String], windowCount: Int, runs: Int): ZIO[Random, BoomError, List[Map[Uncertainty, (Proposal, Boolean)]]] = {
     val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
     val binnedUncertainties = Util.groupByValueWindows(uncertainties.toList, windowCount, (u: Uncertainty) => u.mostProbable.probability)
       .filter(_.nonEmpty).reverse
@@ -32,14 +32,14 @@ object Boom {
   private def shuffleWithinWindows(windows: List[List[Uncertainty]]): ZIO[Random, Nothing, List[Uncertainty]] =
     ZIO.collectAll(windows.map(w => random.shuffle(w))).map(_.flatten)
 
-  def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): Task[List[Selection]] = {
+  def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): IO[BoomError, List[Selection]] = {
     if (isValid(initialState)) {
       resolve(uncertainties, initialState).map { selected =>
         val jointProbability = selected.map(s => Math.log(s.probability)).sum
         scribe.info(s"Found joint probability: $jointProbability")
         selected
       }
-    } else ZIO.fail(BoomError("Given ontology is incoherent"))
+    } else ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
   }
 
   def organizeResults(results: List[Map[Uncertainty, (Proposal, Boolean)]]): (Map[Uncertainty, (Proposal, Boolean)], Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
@@ -52,30 +52,30 @@ object Boom {
   }
 
   def collectChoices(selection: Selection): Set[(Uncertainty, (Proposal, Boolean))] = selection match {
-    case SelectedProposal(proposal, uncertainty, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
-    case SelectedPerplexityProposal(selected, _, _, _) =>
+    case SelectedProposal(proposal, uncertainty, _, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
+    case SelectedPerplexityProposal(selected, _, _, _, _) =>
       selected.proposal.toSet[(Uncertainty, Proposal)].map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
   }
 
-  def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState): Task[List[Selection]] =
+  def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState): IO[BoomError, List[Selection]] =
     uncertainties match {
-      case Nil               => ZIO.fail(BoomError("No uncertainties to resolve."))
+      case Nil               => ZIO.fail(BoomErrorMessage("No uncertainties to resolve."))
       case next :: remaining => tryAdding(next, remaining, initialReasonerState) match {
-        case None            => ZIO.fail(BoomError("The first uncertainty has no proposals which are compatible with the initial reasoner state."))
+        case None            => ZIO.fail(BoomErrorMessage("The first uncertainty has no proposals which are compatible with the initial reasoner state."))
         case Some(selection) => resolveRemaining(selection :: Nil)
       }
     }
 
   @tailrec
-  def resolveRemaining(selected: List[Selection]): Task[List[Selection]] =
+  def resolveRemaining(selected: List[Selection]): IO[BoomError, List[Selection]] =
     selected match {
-      case Nil       => ZIO.fail(BoomError("Search must be called with at least one added selection"))
+      case Nil       => ZIO.fail(BoomErrorMessage("Search must be called with at least one added selection"))
       case prev :: _ =>
         prev.remainingAmbiguities match {
           case Nil               => ZIO.succeed(selected)
           case next :: remaining => tryAdding(next, remaining, prev.reasonerState) match {
             case None            => searchForConflict(next, selected, remaining) match {
-              case None              => ZIO.fail(BoomError("We aren't prepared for clumps that can't be added!"))
+              case None              => ZIO.fail(UnresolvableUncertainties)
               case Some(nowSelected) => resolveRemaining(nowSelected)
             }
             case Some(selection) => resolveRemaining(selection :: selected)
@@ -90,41 +90,42 @@ object Boom {
         !isValid(newReasonerState)
       }
     }
-    //FIXME check for index edge cases
     val (newlyRemaining, stillSelectedPlusConflict) = selected.splitAt(index - 1)
-    val conflict :: stillSelected = stillSelectedPlusConflict
-    scribe.debug(s"Making clump at $index")
-    val perplexity = conflict match {
-      case SelectedProposal(_, ag, _, _)                           => Perplexity(Set(ag)).add(ambiguity)
-      case SelectedPerplexityProposal(_, c @ Perplexity(gs), _, _) => c.add(ambiguity)
+    stillSelectedPlusConflict match {
+      case Nil                       => None
+      case conflict :: stillSelected =>
+        scribe.debug(s"Making perplexity at $index")
+        val newPerplexity = conflict match {
+          case SelectedProposal(_, uncertainty, _, _, _)          => Perplexity(Set(uncertainty)).add(ambiguity)
+          case SelectedPerplexityProposal(_, perplexity, _, _, _) => perplexity.add(ambiguity)
+        }
+        scribe.debug(newPerplexity.toString)
+        val newlyRemainingAmbiguities = newlyRemaining.map {
+          case SelectedProposal(_, uncertainty, _, _, _)          => uncertainty
+          case SelectedPerplexityProposal(_, perplexity, _, _, _) => perplexity
+        }
+        val updatedRemaining = newlyRemainingAmbiguities.reverse ::: newRemaining
+        tryAdding(newPerplexity, updatedRemaining, conflict.previousReasonerState).map(_ :: stillSelected)
     }
-    scribe.debug(perplexity.toString)
-    val newlyRemainingAmbiguities = newlyRemaining.map {
-      case SelectedProposal(_, uncertainty, _, _) => uncertainty
-      case SelectedPerplexityProposal(_, c, _, _) => c
-    }
-    val updatedRemaining = newlyRemainingAmbiguities.reverse ::: newRemaining
-    tryAdding(perplexity, updatedRemaining, stillSelected.head.reasonerState).map(_ :: stillSelected)
   }
 
   private def tryAdding(possibility: Ambiguity, remaining: List[Ambiguity], reasonerState: ReasonerState): Option[Selection] = {
     possibility match {
-      case ag: Uncertainty =>
+      case ag: Uncertainty        =>
         val maybeAdded = ag.sorted.to(LazyList).map { proposal =>
           val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
           proposal -> newReasonerState
         }.find { case (_, state) => isValid(state) }
         maybeAdded.map {
-          case (proposal, state) => SelectedProposal(proposal, ag, remaining, state)
+          case (proposal, newState) => SelectedProposal(proposal, ag, remaining, newState, reasonerState)
         }
-
       case perplexity: Perplexity =>
         val maybeAdded = perplexity.sorted.to(LazyList).map { proposal =>
           val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
           proposal -> newReasonerState
         }.find { case (_, state) => isValid(state) }
         maybeAdded.map {
-          case (proposal, state) => SelectedPerplexityProposal(proposal, perplexity, remaining, state)
+          case (proposal, newState) => SelectedPerplexityProposal(proposal, perplexity, remaining, newState, reasonerState)
         }
     }
   }
@@ -142,6 +143,16 @@ object Boom {
   private def unsatisfiableClasses(state: ReasonerState): Set[AtomicConcept] =
     state.closureSubsBySuperclass(Bottom).collect { case term: AtomicConcept if term != Bottom => term }
 
-  final case class BoomError(message: String) extends Throwable(message)
+  sealed abstract class BoomError(val message: String) extends Throwable(message)
+
+  object BoomError {
+
+    def unapply(error: BoomError): Option[String] = Some(error.message)
+
+  }
+
+  final case class BoomErrorMessage(msg: String) extends BoomError(msg)
+
+  case object UnresolvableUncertainties extends BoomError("No configuration of the uncertainties can be added to the ontology")
 
 }

@@ -1,0 +1,30 @@
+Prefix(:=<http://example.org/test/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+
+Ontology(<http://example.org/test/>
+
+Declaration(Class(:A1))
+Declaration(Class(:A2))
+Declaration(Class(:A3))
+Declaration(Class(:B1))
+Declaration(Class(:B2))
+Declaration(Class(:B3))
+############################
+#   Classes
+############################
+
+# Class: :A2 (:A2)
+
+SubClassOf(:A2 :A1)
+
+# Class: :B2 (:B2)
+
+SubClassOf(:B2 :B1)
+
+
+)

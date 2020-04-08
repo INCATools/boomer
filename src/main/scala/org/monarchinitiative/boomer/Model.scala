@@ -102,19 +102,24 @@ object Model {
     def reasonerState: ReasonerState
 
     /**
+     * Reasoner state prior to adding this selection.
+     */
+    def previousReasonerState: ReasonerState
+
+    /**
      * Probability associated with choosing this selection (possibily a joint probability of contained ambiguities).
      */
     def probability: Double
 
   }
 
-  final case class SelectedProposal(selected: Proposal, uncertainty: Uncertainty, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState) extends Selection {
+  final case class SelectedProposal(selected: Proposal, uncertainty: Uncertainty, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState, previousReasonerState: ReasonerState) extends Selection {
 
     override def probability: Double = selected.probability
 
   }
 
-  final case class SelectedPerplexityProposal(selected: PerplexityProposal, clump: Perplexity, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState) extends Selection {
+  final case class SelectedPerplexityProposal(selected: PerplexityProposal, clump: Perplexity, remainingAmbiguities: List[Ambiguity], reasonerState: ReasonerState, previousReasonerState: ReasonerState) extends Selection {
 
     override def probability: Double = selected.proposal.values.map(_.probability).product
 

@@ -5,10 +5,11 @@ import java.io.{File, FileOutputStream, FileReader, PrintWriter}
 import caseapp._
 import io.circe.yaml.parser
 import org.geneontology.whelk.Bridge
-import org.monarchinitiative.boomer.Boom.BoomError
+import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage}
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
+import scribe.Level
 import zio.ZIO.ZIOAutocloseableOps
 import zio._
 import zio.blocking._
@@ -27,11 +28,12 @@ object Main extends App {
                     )
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
+    scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace()
     val program = for {
       start <- ZIO.effectTotal(System.currentTimeMillis())
       parsed <- ZIO.fromEither(CaseApp.parse[Options](args))
       (options, remainder) = parsed
-      prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(BoomError("No namespace should be contained within another; this will interfere with equivalence constraints."))
+      prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(BoomErrorMessage("No namespace should be contained within another; this will interfere with equivalence constraints."))
       ptable <- OntUtil.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
