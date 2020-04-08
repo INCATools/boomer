@@ -1,8 +1,7 @@
 package org.monarchinitiative.boomer
 
 import org.geneontology.whelk._
-import org.semanticweb.owlapi.apibinding.OWLManager
-import zio._
+import org.monarchinitiative.boomer.TestUtil._
 import zio.test.Assertion._
 import zio.test._
 
@@ -26,10 +25,5 @@ object TestNamespaceCheck extends DefaultRunnableSpec {
     state.queueDelegates(NamespaceChecker.DelegateKey).asInstanceOf[NamespaceChecker].violations.flatMap {
       case (left, right) => Set(left, right)
     }.toSet
-
-  private def loadTestAxiomsFromFile(fileName: String): Task[Set[Axiom]] = for {
-    manager <- ZIO.effect(OWLManager.createOWLOntologyManager())
-    ontology <- ZIO.effect(manager.loadOntologyFromOntologyDocument(this.getClass.getResourceAsStream(fileName)))
-  } yield Bridge.ontologyToAxioms(ontology)
 
 }
