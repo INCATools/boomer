@@ -1,6 +1,7 @@
 package org.monarchinitiative.boomer
 
 import org.geneontology.whelk.{Axiom, ConceptInclusion, ReasonerState}
+
 import scala.Ordering.Double.TotalOrdering
 
 object Model {
@@ -104,12 +105,6 @@ object Model {
      * Probability associated with choosing this selection (possibily a joint probability of contained ambiguities).
      */
     def probability: Double
-
-  }
-
-  final case class Init(remainingAmbiguities: List[Uncertainty], reasonerState: ReasonerState) extends Selection {
-
-    override val probability: Double = 1.0
 
   }
 
