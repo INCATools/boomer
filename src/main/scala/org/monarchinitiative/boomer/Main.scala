@@ -6,10 +6,10 @@ import caseapp._
 import io.circe.yaml.parser
 import org.geneontology.whelk.Bridge
 import org.monarchinitiative.boomer.Boom.BoomError
-import org.monarchinitiative.boomer.Util.close
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
+import zio.ZIO.ZIOAutocloseableOps
 import zio._
 import zio.blocking._
 import zio.console._
@@ -28,7 +28,7 @@ object Main extends App {
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     val program = for {
-      start <- ZIO.effect(System.currentTimeMillis())
+      start <- ZIO.effectTotal(System.currentTimeMillis())
       parsed <- ZIO.fromEither(CaseApp.parse[Options](args))
       (options, remainder) = parsed
       prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(BoomError("No namespace should be contained within another; this will interfere with equivalence constraints."))
@@ -42,16 +42,16 @@ object Main extends App {
       _ <- writeHotSpots(hotspots)
       selections = mostProbable.values
       axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
-      _ <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8")).bracket(close(_)) { writer =>
+      _ <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
           effectBlocking(writer.write(s"${selection.label}\t$best\n"))
         }
       }
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
-      _ <- ZIO.effect(new FileOutputStream(new File("output.ofn"))).bracket(close(_)) { ontStream =>
+      _ <- ZIO.effect(new FileOutputStream(new File("output.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
-      end <- ZIO.effect(System.currentTimeMillis())
+      end <- ZIO.effectTotal(System.currentTimeMillis())
       _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000}s"))
     } yield ()
     program.as(0).catchSome {
@@ -61,7 +61,7 @@ object Main extends App {
   }
 
   private def prefixesFromFile(filename: String): Task[Map[String, String]] =
-    ZIO.effect(new FileReader(new File(filename))).bracket(close(_)) { reader =>
+    ZIO.effect(new FileReader(new File(filename))).bracketAuto { reader =>
       ZIO.fromEither(parser.parse(reader)).flatMap { json =>
         ZIO.fromEither(json.as[Map[String, String]])
       }
@@ -77,7 +77,7 @@ object Main extends App {
   }
 
   private def writeHotSpots(hotspots: Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]]): ZIO[Blocking, Throwable, Unit] = {
-    ZIO.effect(new PrintWriter(new File("output-hotspots.txt"), "utf-8")).bracket(close(_)) { writer =>
+    ZIO.effect(new PrintWriter(new File("output-hotspots.txt"), "utf-8")).bracketAuto { writer =>
       ZIO.foreach_(hotspots) { case (uncertainty, proposals) =>
         ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
           val isBestText = if (isBest) " (most probable)" else ""

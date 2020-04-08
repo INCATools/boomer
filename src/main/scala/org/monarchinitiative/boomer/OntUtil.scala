@@ -31,7 +31,7 @@ object OntUtil {
   private val ProposalClass = Class(s"$BoomPrefix/Proposal")
 
   def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Uncertainty]] =
-    Task.effect(Source.fromFile(file, "utf-8")).bracket(Util.close(_)) { source =>
+    Task.effect(Source.fromFile(file, "utf-8")).bracketAuto { source =>
       ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
     }.map(_.toSet)
 

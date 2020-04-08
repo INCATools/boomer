@@ -10,7 +10,6 @@ import zio.random.Random
 import scala.Ordering.Double.TotalOrdering
 import scala.annotation.tailrec
 import scala.collection.Searching.InsertionPoint
-import scala.math.Ordering
 
 object Boom {
 
@@ -35,7 +34,7 @@ object Boom {
 
   def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): Task[List[Selection]] = {
     if (isValid(initialState)) {
-      resolveRemaining(List(Init(uncertainties, initialState))).map { selected =>
+      resolve(uncertainties, initialState).map { selected =>
         val jointProbability = selected.map(s => Math.log(s.probability)).sum
         scribe.info(s"Found joint probability: $jointProbability")
         selected
@@ -53,16 +52,24 @@ object Boom {
   }
 
   def collectChoices(selection: Selection): Set[(Uncertainty, (Proposal, Boolean))] = selection match {
-    case Init(_, _)                                    => Set.empty
     case SelectedProposal(proposal, uncertainty, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
     case SelectedPerplexityProposal(selected, _, _, _) =>
       selected.proposal.toSet[(Uncertainty, Proposal)].map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
   }
 
+  def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState): Task[List[Selection]] =
+    uncertainties match {
+      case Nil               => ZIO.fail(BoomError("No uncertainties to resolve."))
+      case next :: remaining => tryAdding(next, remaining, initialReasonerState) match {
+        case None            => ZIO.fail(BoomError("The first uncertainty has no proposals which are compatible with the initial reasoner state."))
+        case Some(selection) => resolveRemaining(selection :: Nil)
+      }
+    }
+
   @tailrec
   def resolveRemaining(selected: List[Selection]): Task[List[Selection]] =
     selected match {
-      case Nil       => ZIO.fail(BoomError("Search must be called with at least an Init in previouslySelected"))
+      case Nil       => ZIO.fail(BoomError("Search must be called with at least one added selection"))
       case prev :: _ =>
         prev.remainingAmbiguities match {
           case Nil               => ZIO.succeed(selected)
@@ -90,13 +97,10 @@ object Boom {
     val perplexity = conflict match {
       case SelectedProposal(_, ag, _, _)                           => Perplexity(Set(ag)).add(ambiguity)
       case SelectedPerplexityProposal(_, c @ Perplexity(gs), _, _) => c.add(ambiguity)
-      case Init(remainingAmbiguities, reasonerState)               =>
-        scribe.debug("We're at the beginning, what do we do??")
-        ???
     }
     scribe.debug(perplexity.toString)
     val newlyRemainingAmbiguities = newlyRemaining.map {
-      case SelectedProposal(_, ag, _, _)          => ag
+      case SelectedProposal(_, uncertainty, _, _) => uncertainty
       case SelectedPerplexityProposal(_, c, _, _) => c
     }
     val updatedRemaining = newlyRemainingAmbiguities.reverse ::: newRemaining

@@ -1,9 +1,5 @@
 package org.monarchinitiative.boomer
 
-import java.io.Closeable
-
-import zio.UIO
-
 import scala.annotation.tailrec
 import scala.collection.Searching.InsertionPoint
 
@@ -56,8 +52,5 @@ object Util {
     }).toList
     histo(bounds, data)
   }
-
-
-  def close(closeable: Closeable): UIO[Unit] = UIO(closeable.close())
 
 }
