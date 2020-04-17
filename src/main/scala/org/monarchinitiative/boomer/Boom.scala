@@ -39,7 +39,15 @@ object Boom {
         scribe.info(s"Found joint probability: $jointProbability")
         selected
       }
-    } else ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
+    } else {
+      if (isIncoherent(initialState)) ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
+      else {
+        val violations = getNamespaceViolations(initialState).map {
+          case (AtomicConcept(left), AtomicConcept(right)) => s"$left EquivalentTo $right"
+        }.mkString("\n")
+        ZIO.fail(BoomErrorMessage(s"Given ontology has equivalents within namespace:\n$violations"))
+      }
+    }
   }
 
   def organizeResults(results: List[Map[Uncertainty, (Proposal, Boolean)]]): (Map[Uncertainty, (Proposal, Boolean)], Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
@@ -137,8 +145,10 @@ object Boom {
   private def isIncoherent(state: ReasonerState): Boolean =
     state.closureSubsBySuperclass(Bottom).exists(t => !t.isAnonymous && t != Bottom)
 
-  private def hasNamespaceViolations(state: ReasonerState): Boolean =
-    state.queueDelegates(NamespaceChecker.DelegateKey).asInstanceOf[NamespaceChecker].violations.nonEmpty
+  private def hasNamespaceViolations(state: ReasonerState): Boolean = getNamespaceViolations(state).nonEmpty
+
+  private def getNamespaceViolations(state: ReasonerState): List[(AtomicConcept, AtomicConcept)] =
+    state.queueDelegates(NamespaceChecker.DelegateKey).asInstanceOf[NamespaceChecker].violations
 
   private def unsatisfiableClasses(state: ReasonerState): Set[AtomicConcept] =
     state.closureSubsBySuperclass(Bottom).collect { case term: AtomicConcept if term != Bottom => term }
