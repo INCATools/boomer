@@ -10,7 +10,13 @@ Bayesian OWL ontology merging
 ```bash
 sbt stage
 ```
-This will create the executable `./target/universal/stage/bin/boomer`.  
+This will create the executable `./target/universal/stage/bin/boomer`.
+
+To set the JVM heap size, use an environment variable:
+
+```bash
+export JAVA_OPTS=-Xmx10G
+```
 
 To run, `boomer` expects 5 arguments:
 - `ptable`: A tsv file containing the probabilities of each IRI/term.
