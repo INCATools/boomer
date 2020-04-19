@@ -33,7 +33,7 @@ object OntUtil {
   def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Uncertainty]] =
     Task.effect(Source.fromFile(file, "utf-8")).bracketAuto { source =>
       ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
-    }.map(_.toSet)
+    }.map(_.to(Set))
 
   private def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Uncertainty] = {
     val columns = line.split("\\t", -1)
@@ -70,27 +70,27 @@ object OntUtil {
   } yield po
 
   def partitionOntology(ontology: OWLOntology): Task[ProbabilisticOntology] = {
-    val groups = EntitySearcher.getInstances(UncertaintyClass, ontology).asScala.toSet[OWLIndividual].map(_ -> Set.empty[Proposal]).toMap
+    val groups = EntitySearcher.getInstances(UncertaintyClass, ontology).asScala.to(Set).map(_ -> Set.empty[Proposal]).toMap
     val proposals: Task[(Map[OWLIndividual, Set[Proposal]], Set[OWLAxiom])] =
-      EntitySearcher.getInstances(ProposalClass, ontology).asScala.toSet.foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) {
+      EntitySearcher.getInstances(ProposalClass, ontology).asScala.to(Set).foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) {
         case (acc, ind) =>
           val proposalAnnotationSubject = ind match {
             case anon: OWLAnonymousIndividual => anon
             case named: OWLNamedIndividual    => named.getIRI
           }
-          val maybeProbability = ZIO.fromOption(EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, HasProbabilityAP).asScala.toSet[OWLAnnotation].collectFirst {
+          val maybeProbability = ZIO.fromOption(EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, HasProbabilityAP).asScala.to(Set).collectFirst {
             case Annotation(_, HasProbabilityAP, value ^^ XSDDouble) =>
               ZIO.fromOption(value.toDoubleOption)
                 .mapError(_ => BoomErrorMessage(s"Proposal has probability value that can't be converted to a double: $proposalAnnotationSubject"))
           }).mapError(_ => BoomErrorMessage(s"Can't find probability for proposal: $proposalAnnotationSubject")).flatten
-          val proposalLabel = EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, RDFSLabel).asScala.toSet[OWLAnnotation].collectFirst {
+          val proposalLabel = EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, RDFSLabel).asScala.to(Set).collectFirst {
             case Annotation(_, RDFSLabel, label ^^ _) => label
           }.getOrElse("")
-          val proposalOWLAxioms = ontology.getAxioms(Imports.INCLUDED).asScala.toSet[OWLAxiom].collect {
+          val proposalOWLAxioms = ontology.getAxioms(Imports.INCLUDED).asScala.to(Set).collect {
             case axiom if axiom.getAnnotations(IsPartOfAP).asScala.exists(_.getValue == proposalAnnotationSubject) => axiom
           }
           val proposalWhelkAxioms = proposalOWLAxioms.flatMap(Bridge.convertAxiom).collect { case ci: ConceptInclusion => ci }
-          val maybeGroup = ZIO.fromOption(EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, IsPartOfAP).asScala.toSet[OWLAnnotation].collectFirst {
+          val maybeGroup = ZIO.fromOption(EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, IsPartOfAP).asScala.to(Set).collectFirst {
             case Annotation(_, IsPartOfAP, anon: OWLAnonymousIndividual) => anon
             case Annotation(_, IsPartOfAP, iri: IRI)                     => Individual(iri)
           }).mapError(_ => BoomErrorMessage(s"Can't find group for proposal: $proposalAnnotationSubject"))
@@ -106,8 +106,8 @@ object OntUtil {
       }
     proposals.map {
       case (proposalGroups, axiomsToRemove) =>
-        val ontAxioms = (ontology.getAxioms(Imports.INCLUDED).asScala.toSet -- axiomsToRemove).flatMap(Bridge.convertAxiom)
-        val groups = proposalGroups.values.map(ps => Uncertainty(ps)).toSet
+        val ontAxioms = (ontology.getAxioms(Imports.INCLUDED).asScala.to(Set) -- axiomsToRemove).flatMap(Bridge.convertAxiom)
+        val groups = proposalGroups.values.map(ps => Uncertainty(ps)).to(Set)
         ProbabilisticOntology(ontAxioms, groups)
     }
   }
