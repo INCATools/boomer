@@ -62,7 +62,7 @@ object Boom {
   def collectChoices(selection: Selection): Set[(Uncertainty, (Proposal, Boolean))] = selection match {
     case SelectedProposal(proposal, uncertainty, _, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
     case SelectedPerplexityProposal(selected, _, _, _, _) =>
-      selected.proposal.toSet[(Uncertainty, Proposal)].map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
+      selected.proposal.to(Set).map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
   }
 
   def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState): IO[BoomError, List[Selection]] =

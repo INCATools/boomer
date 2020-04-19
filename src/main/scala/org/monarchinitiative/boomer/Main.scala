@@ -37,7 +37,7 @@ object Main extends App {
       ptable <- OntUtil.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
-      results <- Boom.evaluate(assertions, ptable, prefixes.values.toSet, options.windowCount, options.runs)
+      results <- Boom.evaluate(assertions, ptable, prefixes.values.to(Set), options.windowCount, options.runs)
       (mostProbable, counted) = Boom.organizeResults(results)
       _ <- ZIO.effect(scribe.info(s"Most probable: ${mostProbable.map(s => Math.log(s._2._1.probability)).sum}"))
       hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }

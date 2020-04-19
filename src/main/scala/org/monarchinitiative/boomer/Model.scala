@@ -55,7 +55,7 @@ object Model {
     /**
      * The set union of all axioms from the group of proposals.
      */
-    override def axioms: Set[ConceptInclusion] = proposal.values.flatMap(_.axioms).toSet
+    override def axioms: Set[ConceptInclusion] = proposal.values.flatMap(_.axioms).to(Set)
 
   }
 
