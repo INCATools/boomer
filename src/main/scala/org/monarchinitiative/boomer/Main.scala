@@ -20,6 +20,7 @@ import scala.jdk.CollectionConverters._
 object Main extends App {
 
   case class Options(
+                      output: String = "output",
                       ptable: String,
                       ontology: String,
                       prefixes: String,
@@ -41,16 +42,16 @@ object Main extends App {
       (mostProbable, counted) = Boom.organizeResults(results)
       _ <- ZIO.effect(scribe.info(s"Most probable: ${mostProbable.map(s => Math.log(s._2._1.probability)).sum}"))
       hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }
-      _ <- writeHotSpots(hotspots)
+      _ <- writeHotSpots(hotspots, options.output)
       selections = mostProbable.values
       axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
-      _ <- ZIO.effect(new PrintWriter(new File("output.txt"), "utf-8")).bracketAuto { writer =>
+      _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
           effectBlocking(writer.write(s"${selection.label}\t$best\n"))
         }
       }
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
-      _ <- ZIO.effect(new FileOutputStream(new File("output.ofn"))).bracketAuto { ontStream =>
+      _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
       end <- ZIO.effectTotal(System.currentTimeMillis())
@@ -78,8 +79,8 @@ object Main extends App {
     } yield (ns1, ns2)).isEmpty
   }
 
-  private def writeHotSpots(hotspots: Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]]): ZIO[Blocking, Throwable, Unit] = {
-    ZIO.effect(new PrintWriter(new File("output-hotspots.txt"), "utf-8")).bracketAuto { writer =>
+  private def writeHotSpots(hotspots: Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]], outputName: String): ZIO[Blocking, Throwable, Unit] = {
+    ZIO.effect(new PrintWriter(new File(s"$outputName-hotspots.txt"), "utf-8")).bracketAuto { writer =>
       ZIO.foreach_(hotspots) { case (uncertainty, proposals) =>
         ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
           val isBestText = if (isBest) " (most probable)" else ""
