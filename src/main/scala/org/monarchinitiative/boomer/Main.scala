@@ -58,9 +58,9 @@ object Main extends App {
       _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000}s"))
     } yield ()
     program.as(0).catchSome {
-      case e: caseapp.core.Error => ZIO.effect(scribe.error(e.message))
-      case BoomError(msg)        => ZIO.effect(scribe.error(msg))
-    }.as(1).catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(1))
+      case e: caseapp.core.Error => ZIO.effect(scribe.error(e.message)).as(1)
+      case BoomError(msg)        => ZIO.effect(scribe.error(msg)).as(1)
+    }.catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(1))
   }
 
   private def prefixesFromFile(filename: String): Task[Map[String, String]] =
