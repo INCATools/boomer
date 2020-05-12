@@ -13,7 +13,7 @@ object Util {
      * will not necessarily be useful.
      * For example, `List("a", "aa", "aaa").bisect(_.length < 3)` returns `InsertionPoint(2)`
      */
-    final def bisect(predicate: A => Boolean): InsertionPoint = bisect(0, self.size)(predicate)
+    def bisect(predicate: A => Boolean): InsertionPoint = bisect(0, self.size)(predicate)
 
     /**
      * Find an index within the specified range of the sequence where the result of the given predicate function
@@ -21,7 +21,7 @@ object Util {
      * will not necessarily be useful.
      */
     @tailrec
-    final def bisect(from: Int, to: Int)(predicate: A => Boolean): InsertionPoint = {
+    def bisect(from: Int, to: Int)(predicate: A => Boolean): InsertionPoint = {
       if (from < 0) bisect(0, to)(predicate)
       else if (to > self.size) bisect(from, self.size)(predicate)
       else if (to <= from) InsertionPoint(from)
@@ -35,7 +35,6 @@ object Util {
   }
 
   def groupByValueWindows[A](data: List[A], windowCount: Int, value: A => Double): List[List[A]] = {
-
     def histo(bounds: List[Double], data: List[A]): List[List[A]] =
       bounds match {
         case Nil      => Nil

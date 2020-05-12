@@ -30,7 +30,7 @@ object Boom {
   }
 
   private def shuffleWithinWindows(windows: List[List[Uncertainty]]): ZIO[Random, Nothing, List[Uncertainty]] =
-    ZIO.collectAll(windows.map(w => random.shuffle(w))).map(_.flatten)
+    ZIO.foreach(windows)(w => random.shuffle(w)).map(_.flatten)
 
   def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty], prohibitedPrefixEquivalences: Set[String]): IO[BoomError, List[Selection]] = {
     if (isValid(initialState)) {
