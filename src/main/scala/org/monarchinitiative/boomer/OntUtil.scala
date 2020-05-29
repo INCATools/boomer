@@ -6,7 +6,7 @@ import java.util.UUID
 import org.apache.commons.codec.digest.DigestUtils
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{Individual => _, _}
-import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage}
+import org.monarchinitiative.boomer.Boom.BoomErrorMessage
 import org.monarchinitiative.boomer.Model.{ProbabilisticOntology, Proposal, Uncertainty}
 import org.openrdf.model.vocabulary.DCTERMS
 import org.phenoscape.scowl._
@@ -31,9 +31,12 @@ object OntUtil {
   private val ProposalClass = Class(s"$BoomPrefix/Proposal")
 
   def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Uncertainty]] =
-    Task.effect(Source.fromFile(file, "utf-8")).bracketAuto { source =>
-      ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
-    }.map(_.to(Set))
+    Task
+      .effect(Source.fromFile(file, "utf-8"))
+      .bracketAuto { source =>
+        ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
+      }
+      .map(_.to(Set))
 
   private def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Uncertainty] = {
     val columns = line.split("\\t", -1)
@@ -41,8 +44,8 @@ object OntUtil {
       val leftCURIE = columns(0).trim
       val rightCURIE = columns(1).trim
       for {
-        leftID <- ZIO.fromOption(expandCURIE(leftCURIE, prefixes)).mapError(_ => BoomErrorMessage(s"Failed expanding CURIE: $leftCURIE"))
-        rightID <- ZIO.fromOption(expandCURIE(rightCURIE, prefixes)).mapError(_ => BoomErrorMessage(s"Failed expanding CURIE: $rightCURIE"))
+        leftID <- ZIO.fromOption(expandCURIE(leftCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $leftCURIE"))
+        rightID <- ZIO.fromOption(expandCURIE(rightCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $rightCURIE"))
         left = AtomicConcept(leftID)
         right = AtomicConcept(rightID)
         probProperSubLeftRight <- Task.effect(columns(2).trim.toDouble)
@@ -51,14 +54,18 @@ object OntUtil {
         probNoSubsumption <- Task.effect(columns(5).trim.toDouble)
         disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
         disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
-      } yield {
-        Uncertainty(Set(
-          Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE", disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right), probProperSubLeftRight),
-          Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE", disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left), probProperSubRightLeft),
+      } yield Uncertainty(
+        Set(
+          Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE",
+                   disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right),
+                   probProperSubLeftRight),
+          Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE",
+                   disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left),
+                   probProperSubRightLeft),
           Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
           Proposal(s"$leftCURIE SiblingOf $rightCURIE", disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
-        ).filter(_.probability > 0.0))
-      }
+        ).filter(_.probability > 0.0)
+      )
     } else Task.fail(BoomErrorMessage(s"Invalid ptable line: $line"))
   }
 
@@ -78,22 +85,37 @@ object OntUtil {
             case anon: OWLAnonymousIndividual => anon
             case named: OWLNamedIndividual    => named.getIRI
           }
-          val maybeProbability = ZIO.fromOption(EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, HasProbabilityAP).asScala.to(Set).collectFirst {
-            case Annotation(_, HasProbabilityAP, value ^^ XSDDouble) =>
-              ZIO.fromOption(value.toDoubleOption)
-                .mapError(_ => BoomErrorMessage(s"Proposal has probability value that can't be converted to a double: $proposalAnnotationSubject"))
-          }).mapError(_ => BoomErrorMessage(s"Can't find probability for proposal: $proposalAnnotationSubject")).flatten
-          val proposalLabel = EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, RDFSLabel).asScala.to(Set).collectFirst {
-            case Annotation(_, RDFSLabel, label ^^ _) => label
-          }.getOrElse("")
+          val maybeProbability = ZIO
+            .fromOption(
+              EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, HasProbabilityAP).asScala.to(Set).collectFirst {
+                case Annotation(_, HasProbabilityAP, value ^^ XSDDouble) =>
+                  ZIO
+                    .fromOption(value.toDoubleOption)
+                    .orElseFail(BoomErrorMessage(s"Proposal has probability value that can't be converted to a double: $proposalAnnotationSubject"))
+              }
+            )
+            .orElseFail(BoomErrorMessage(s"Can't find probability for proposal: $proposalAnnotationSubject"))
+            .flatten
+          val proposalLabel = EntitySearcher
+            .getAnnotations(proposalAnnotationSubject, ontology, RDFSLabel)
+            .asScala
+            .to(Set)
+            .collectFirst {
+              case Annotation(_, RDFSLabel, label ^^ _) => label
+            }
+            .getOrElse("")
           val proposalOWLAxioms = ontology.getAxioms(Imports.INCLUDED).asScala.to(Set).collect {
             case axiom if axiom.getAnnotations(IsPartOfAP).asScala.exists(_.getValue == proposalAnnotationSubject) => axiom
           }
           val proposalWhelkAxioms = proposalOWLAxioms.flatMap(Bridge.convertAxiom).collect { case ci: ConceptInclusion => ci }
-          val maybeGroup = ZIO.fromOption(EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, IsPartOfAP).asScala.to(Set).collectFirst {
-            case Annotation(_, IsPartOfAP, anon: OWLAnonymousIndividual) => anon
-            case Annotation(_, IsPartOfAP, iri: IRI)                     => Individual(iri)
-          }).mapError(_ => BoomErrorMessage(s"Can't find group for proposal: $proposalAnnotationSubject"))
+          val maybeGroup = ZIO
+            .fromOption(
+              EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, IsPartOfAP).asScala.to(Set).collectFirst {
+                case Annotation(_, IsPartOfAP, anon: OWLAnonymousIndividual) => anon
+                case Annotation(_, IsPartOfAP, iri: IRI)                     => Individual(iri)
+              }
+            )
+            .orElseFail(BoomErrorMessage(s"Can't find group for proposal: $proposalAnnotationSubject"))
           val maybeProposal = maybeProbability.map(p => Proposal(proposalLabel, proposalWhelkAxioms, p))
           for {
             (groups, axiomsToRemove) <- acc
@@ -118,10 +140,10 @@ object OntUtil {
   } yield Set(ConceptInclusion(newClass, axiom.subclass), ConceptInclusion(Conjunction(newClass, axiom.superclass), Bottom))
 
   /**
-   * This produces the same axioms as negating the reversed concept inclusion (superclass/subclass).
-   * It is specialized for two named classes so that it can produce a deterministic IRI for
-   * the generated sibling class.
-   */
+    * This produces the same axioms as negating the reversed concept inclusion (superclass/subclass).
+    * It is specialized for two named classes so that it can produce a deterministic IRI for
+    * the generated sibling class.
+    */
   def disjointSibling(subclass: AtomicConcept, superclass: AtomicConcept): Set[ConceptInclusion] = {
     val text = s"${subclass.id}${superclass.id}"
     val hash = DigestUtils.sha1Hex(text)
@@ -130,11 +152,11 @@ object OntUtil {
   }
 
   /**
-   * Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
-   *
+    * Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
+    *
    * @param ci axiom to convert
-   * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
-   */
+    * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
+    */
   def whelkToOWL(ci: ConceptInclusion): Option[OWLSubClassOfAxiom] = ci match {
     case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup)) => Some(SubClassOf(Class(sub), Class(sup)))
     case _                                                        => None
