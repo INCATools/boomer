@@ -28,7 +28,7 @@ object Main extends App {
     runs: Int
   )
 
-  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
+  override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] = {
     scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace()
     val program = for {
       start <- ZIO.effectTotal(System.currentTimeMillis())
@@ -60,12 +60,12 @@ object Main extends App {
       _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000}s"))
     } yield ()
     program
-      .as(0)
+      .as(ExitCode.success)
       .catchSome {
-        case e: caseapp.core.Error => ZIO.effect(scribe.error(e.message)).as(1)
-        case BoomError(msg)        => ZIO.effect(scribe.error(msg)).as(1)
+        case e: caseapp.core.Error => ZIO.effect(scribe.error(e.message)).as(ExitCode.failure)
+        case BoomError(msg)        => ZIO.effect(scribe.error(msg)).as(ExitCode.failure)
       }
-      .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(1))
+      .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
   }
 
   private def prefixesFromFile(filename: String): Task[Map[String, String]] =
