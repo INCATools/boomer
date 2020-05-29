@@ -29,7 +29,7 @@ libraryDependencies ++= {
     "commons-codec" % "commons-codec" % "1.14",
     "com.outr" %% "scribe-slf4j" % "2.7.12",
     "io.circe" %% "circe-yaml" % "0.13.1",
-    "com.github.alexarchambault" %% "case-app" % "2.0.0-M16",
+    "com.github.alexarchambault" %% "case-app" % "2.0.0",
     "dev.zio" %% "zio-test" % zioVersion % Test,
     "dev.zio" %% "zio-test-sbt" % zioVersion % Test
   )
