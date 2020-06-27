@@ -18,7 +18,7 @@ testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 
 fork in Test := true
 
-val zioVersion = "1.0.0-RC20"
+val zioVersion = "1.0.0-RC21-1"
 
 libraryDependencies ++= {
   Seq(
