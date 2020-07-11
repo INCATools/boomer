@@ -10,30 +10,28 @@ import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
 import scribe.Level
-import zio.ZIO.ZIOAutocloseableOps
+import zio.ZIO.ZIOAutoCloseableOps
 import zio._
 import zio.blocking._
 import zio.console._
 
 import scala.jdk.CollectionConverters._
 
-object Main extends App {
+final case class Options(
+  output: String = "output",
+  ptable: String,
+  ontology: String,
+  prefixes: String,
+  windowCount: Int,
+  runs: Int
+)
 
-  case class Options(
-    output: String = "output",
-    ptable: String,
-    ontology: String,
-    prefixes: String,
-    windowCount: Int,
-    runs: Int
-  )
+object Main extends ZCaseApp[Options] {
 
-  override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] = {
+  override def run(options: Options, arg: RemainingArgs): ZIO[ZEnv, Nothing, ExitCode] = {
     scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace()
     val program = for {
       start <- ZIO.effectTotal(System.currentTimeMillis())
-      parsed <- ZIO.fromEither(CaseApp.parse[Options](args))
-      (options, remainder) = parsed
       prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(
         BoomErrorMessage("No namespace should be contained within another; this will interfere with equivalence constraints."))
       ptable <- OntUtil.readPTable(new File(options.ptable), prefixes)
@@ -62,8 +60,7 @@ object Main extends App {
     program
       .as(ExitCode.success)
       .catchSome {
-        case e: caseapp.core.Error => ZIO.effect(scribe.error(e.message)).as(ExitCode.failure)
-        case BoomError(msg)        => ZIO.effect(scribe.error(msg)).as(ExitCode.failure)
+        case BoomError(msg) => ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
       }
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
   }
