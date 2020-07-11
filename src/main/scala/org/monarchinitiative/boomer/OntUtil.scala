@@ -4,11 +4,11 @@ import java.io.File
 import java.util.UUID
 
 import org.apache.commons.codec.digest.DigestUtils
+import org.eclipse.rdf4j.model.vocabulary.DCTERMS
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{Individual => _, _}
 import org.monarchinitiative.boomer.Boom.BoomErrorMessage
 import org.monarchinitiative.boomer.Model.{ProbabilisticOntology, Proposal, Uncertainty}
-import org.openrdf.model.vocabulary.DCTERMS
 import org.phenoscape.scowl._
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.model._
