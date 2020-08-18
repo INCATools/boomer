@@ -18,7 +18,7 @@ testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 
 fork in Test := true
 
-val zioVersion = "1.0.0-RC21-2"
+val zioVersion = "1.0.0"
 
 libraryDependencies ++= {
   Seq(
@@ -29,7 +29,7 @@ libraryDependencies ++= {
     "commons-codec" % "commons-codec" % "1.14",
     "com.outr" %% "scribe-slf4j" % "2.7.12",
     "io.circe" %% "circe-yaml" % "0.13.1",
-    "com.github.alexarchambault" %% "case-app" % "2.0.3",
+    "com.github.alexarchambault" %% "case-app" % "2.0.4",
     "dev.zio" %% "zio-test" % zioVersion % Test,
     "dev.zio" %% "zio-test-sbt" % zioVersion % Test
   )
