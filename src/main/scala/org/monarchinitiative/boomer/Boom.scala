@@ -50,8 +50,8 @@ object Boom {
     else if (isIncoherent(initialState)) ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
     else {
       val violations = getNamespaceViolations(initialState)
-        .map {
-          case (AtomicConcept(left), AtomicConcept(right)) => s"$left EquivalentTo $right"
+        .map { case (AtomicConcept(left), AtomicConcept(right)) =>
+          s"$left EquivalentTo $right"
         }
         .mkString("\n")
       ZIO.fail(BoomErrorMessage(s"Given ontology has equivalents within namespace:\n$violations"))
@@ -61,8 +61,8 @@ object Boom {
     : (Map[Uncertainty, (Proposal, Boolean)], Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
     val mostProbableResult = results.maxBy(_.map(_._2._1.probability).sum)
     // Count, for each uncertainty, how often each proposal was found
-    val counted = results.flatMap(_.toList).groupMap(_._1)(_._2).map {
-      case (uncertainty, selections) => uncertainty -> selections.groupMap(identity)(_ => 1).view.mapValues(_.sum).toMap
+    val counted = results.flatMap(_.toList).groupMap(_._1)(_._2).map { case (uncertainty, selections) =>
+      uncertainty -> selections.groupMap(identity)(_ => 1).view.mapValues(_.sum).toMap
     }
     (mostProbableResult, counted)
   }
@@ -138,8 +138,8 @@ object Boom {
             proposal -> newReasonerState
           }
           .find { case (_, state) => isValid(state) }
-        maybeAdded.map {
-          case (proposal, newState) => SelectedProposal(proposal, ag, remaining, newState, reasonerState)
+        maybeAdded.map { case (proposal, newState) =>
+          SelectedProposal(proposal, ag, remaining, newState, reasonerState)
         }
       case perplexity: Perplexity =>
         val maybeAdded = perplexity.sorted
@@ -149,8 +149,8 @@ object Boom {
             proposal -> newReasonerState
           }
           .find { case (_, state) => isValid(state) }
-        maybeAdded.map {
-          case (proposal, newState) => SelectedPerplexityProposal(proposal, perplexity, remaining, newState, reasonerState)
+        maybeAdded.map { case (proposal, newState) =>
+          SelectedPerplexityProposal(proposal, perplexity, remaining, newState, reasonerState)
         }
     }
 

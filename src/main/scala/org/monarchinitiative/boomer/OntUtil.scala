@@ -79,58 +79,56 @@ object OntUtil {
   def partitionOntology(ontology: OWLOntology): Task[ProbabilisticOntology] = {
     val groups = EntitySearcher.getInstances(UncertaintyClass, ontology).asScala.to(Set).map(_ -> Set.empty[Proposal]).toMap
     val proposals: Task[(Map[OWLIndividual, Set[Proposal]], Set[OWLAxiom])] =
-      EntitySearcher.getInstances(ProposalClass, ontology).asScala.to(Set).foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) {
-        case (acc, ind) =>
-          val proposalAnnotationSubject = ind match {
-            case anon: OWLAnonymousIndividual => anon
-            case named: OWLNamedIndividual    => named.getIRI
-          }
-          val maybeProbability = ZIO
-            .fromOption(
-              EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, HasProbabilityAP).asScala.to(Set).collectFirst {
-                case Annotation(_, HasProbabilityAP, value ^^ XSDDouble) =>
-                  ZIO
-                    .fromOption(value.toDoubleOption)
-                    .orElseFail(BoomErrorMessage(s"Proposal has probability value that can't be converted to a double: $proposalAnnotationSubject"))
-              }
-            )
-            .orElseFail(BoomErrorMessage(s"Can't find probability for proposal: $proposalAnnotationSubject"))
-            .flatten
-          val proposalLabel = EntitySearcher
-            .getAnnotations(proposalAnnotationSubject, ontology, RDFSLabel)
-            .asScala
-            .to(Set)
-            .collectFirst {
-              case Annotation(_, RDFSLabel, label ^^ _) => label
+      EntitySearcher.getInstances(ProposalClass, ontology).asScala.to(Set).foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) { case (acc, ind) =>
+        val proposalAnnotationSubject = ind match {
+          case anon: OWLAnonymousIndividual => anon
+          case named: OWLNamedIndividual    => named.getIRI
+        }
+        val maybeProbability = ZIO
+          .fromOption(
+            EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, HasProbabilityAP).asScala.to(Set).collectFirst {
+              case Annotation(_, HasProbabilityAP, value ^^ XSDDouble) =>
+                ZIO
+                  .fromOption(value.toDoubleOption)
+                  .orElseFail(BoomErrorMessage(s"Proposal has probability value that can't be converted to a double: $proposalAnnotationSubject"))
             }
-            .getOrElse("")
-          val proposalOWLAxioms = ontology.getAxioms(Imports.INCLUDED).asScala.to(Set).collect {
-            case axiom if axiom.getAnnotations(IsPartOfAP).asScala.exists(_.getValue == proposalAnnotationSubject) => axiom
+          )
+          .orElseFail(BoomErrorMessage(s"Can't find probability for proposal: $proposalAnnotationSubject"))
+          .flatten
+        val proposalLabel = EntitySearcher
+          .getAnnotations(proposalAnnotationSubject, ontology, RDFSLabel)
+          .asScala
+          .to(Set)
+          .collectFirst { case Annotation(_, RDFSLabel, label ^^ _) =>
+            label
           }
-          val proposalWhelkAxioms = proposalOWLAxioms.flatMap(Bridge.convertAxiom).collect { case ci: ConceptInclusion => ci }
-          val maybeGroup = ZIO
-            .fromOption(
-              EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, IsPartOfAP).asScala.to(Set).collectFirst {
-                case Annotation(_, IsPartOfAP, anon: OWLAnonymousIndividual) => anon
-                case Annotation(_, IsPartOfAP, iri: IRI)                     => Individual(iri)
-              }
-            )
-            .orElseFail(BoomErrorMessage(s"Can't find group for proposal: $proposalAnnotationSubject"))
-          val maybeProposal = maybeProbability.map(p => Proposal(proposalLabel, proposalWhelkAxioms, p))
-          for {
-            (groups, axiomsToRemove) <- acc
-            group <- maybeGroup
-            proposal <- maybeProposal
-          } yield {
-            val currentProposals = groups.getOrElse(group, Set.empty)
-            groups.updated(group, currentProposals + proposal) -> (axiomsToRemove ++ proposalOWLAxioms)
-          }
+          .getOrElse("")
+        val proposalOWLAxioms = ontology.getAxioms(Imports.INCLUDED).asScala.to(Set).collect {
+          case axiom if axiom.getAnnotations(IsPartOfAP).asScala.exists(_.getValue == proposalAnnotationSubject) => axiom
+        }
+        val proposalWhelkAxioms = proposalOWLAxioms.flatMap(Bridge.convertAxiom).collect { case ci: ConceptInclusion => ci }
+        val maybeGroup = ZIO
+          .fromOption(
+            EntitySearcher.getAnnotations(proposalAnnotationSubject, ontology, IsPartOfAP).asScala.to(Set).collectFirst {
+              case Annotation(_, IsPartOfAP, anon: OWLAnonymousIndividual) => anon
+              case Annotation(_, IsPartOfAP, iri: IRI)                     => Individual(iri)
+            }
+          )
+          .orElseFail(BoomErrorMessage(s"Can't find group for proposal: $proposalAnnotationSubject"))
+        val maybeProposal = maybeProbability.map(p => Proposal(proposalLabel, proposalWhelkAxioms, p))
+        for {
+          (groups, axiomsToRemove) <- acc
+          group <- maybeGroup
+          proposal <- maybeProposal
+        } yield {
+          val currentProposals = groups.getOrElse(group, Set.empty)
+          groups.updated(group, currentProposals + proposal) -> (axiomsToRemove ++ proposalOWLAxioms)
+        }
       }
-    proposals.map {
-      case (proposalGroups, axiomsToRemove) =>
-        val ontAxioms = (ontology.getAxioms(Imports.INCLUDED).asScala.to(Set) -- axiomsToRemove).flatMap(Bridge.convertAxiom)
-        val groups = proposalGroups.values.map(ps => Uncertainty(ps)).to(Set)
-        ProbabilisticOntology(ontAxioms, groups)
+    proposals.map { case (proposalGroups, axiomsToRemove) =>
+      val ontAxioms = (ontology.getAxioms(Imports.INCLUDED).asScala.to(Set) -- axiomsToRemove).flatMap(Bridge.convertAxiom)
+      val groups = proposalGroups.values.map(ps => Uncertainty(ps)).to(Set)
+      ProbabilisticOntology(ontAxioms, groups)
     }
   }
 
@@ -154,7 +152,7 @@ object OntUtil {
   /**
     * Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
     *
-   * @param ci axiom to convert
+    * @param ci axiom to convert
     * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
     */
   def whelkToOWL(ci: ConceptInclusion): Option[OWLSubClassOfAxiom] = ci match {

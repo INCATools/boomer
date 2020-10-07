@@ -45,9 +45,8 @@ object Main extends ZCaseApp[Options] {
       selections = mostProbable.values
       axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
-        ZIO.foreach(selections) {
-          case (selection, best) =>
-            effectBlocking(writer.write(s"${selection.label}\t$best\n"))
+        ZIO.foreach(selections) { case (selection, best) =>
+          effectBlocking(writer.write(s"${selection.label}\t$best\n"))
         }
       }
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
@@ -59,8 +58,8 @@ object Main extends ZCaseApp[Options] {
     } yield ()
     program
       .as(ExitCode.success)
-      .catchSome {
-        case BoomError(msg) => ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
+      .catchSome { case BoomError(msg) =>
+        ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
       }
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
   }
@@ -83,13 +82,11 @@ object Main extends ZCaseApp[Options] {
   private def writeHotSpots(hotspots: Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]],
                             outputName: String): ZIO[Blocking, Throwable, Unit] =
     ZIO.effect(new PrintWriter(new File(s"$outputName-hotspots.txt"), "utf-8")).bracketAuto { writer =>
-      ZIO.foreach_(hotspots) {
-        case (uncertainty, proposals) =>
-          ZIO.foreach_(proposals) {
-            case ((proposal, isBest), count) =>
-              val isBestText = if (isBest) " (most probable)" else ""
-              effectBlocking(writer.println(s"${proposal.label}$isBestText\t[$count]"))
-          } *> effectBlocking(writer.println())
+      ZIO.foreach_(hotspots) { case (uncertainty, proposals) =>
+        ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
+          val isBestText = if (isBest) " (most probable)" else ""
+          effectBlocking(writer.println(s"${proposal.label}$isBestText\t[$count]"))
+        } *> effectBlocking(writer.println())
       }
     }
 
