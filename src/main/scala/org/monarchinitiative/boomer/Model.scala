@@ -16,7 +16,7 @@ object Model {
     * A set of axioms representing a possible state of the world. All axioms
     * within the proposal are considered together as a unit.
     *
-   * @param label       a descriptive label for the condition represented by this group of axioms
+    * @param label       a descriptive label for the condition represented by this group of axioms
     * @param axioms      the group of axioms constituting this proposal (restricted to concept inclusions)
     * @param probability the prior probability asserted for the truthfulness of this proposal
     */
@@ -72,9 +72,8 @@ object Model {
       */
     def sorted: List[PerplexityProposal] =
       uncertainties
-        .foldLeft(List(Map.empty[Uncertainty, Proposal])) {
-          case (acc, uncertainty) =>
-            uncertainty.proposals.toList.flatMap(p => acc.map(m => m.updated(uncertainty, p)))
+        .foldLeft(List(Map.empty[Uncertainty, Proposal])) { case (acc, uncertainty) =>
+          uncertainty.proposals.toList.flatMap(p => acc.map(m => m.updated(uncertainty, p)))
         }
         .sortBy(_.values.map(_.probability).product)(Ordering[Double].reverse)
         .map(PerplexityProposal)

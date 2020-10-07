@@ -13,17 +13,21 @@ object TestNamespaceCheck extends DefaultRunnableSpec {
         axioms <- loadTestAxiomsFromFile("namespace-check.ofn")
         whelk = Reasoner.assert(axioms, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set("http://example.org/namespacecheck1/"), Nil)))
         violations = namespaceViolations(whelk)
-      } yield
-        assert(violations(AtomicConcept("http://example.org/namespacecheck1/A")))(isTrue) &&
-          assert(violations(AtomicConcept("http://example.org/namespacecheck1/D")))(isTrue) &&
-          assert(violations(AtomicConcept("http://example.org/namespacecheck2/G")))(isFalse) &&
-          assert(violations(AtomicConcept("http://example.org/namespacecheck2/H")))(isFalse)
+      } yield assert(violations(AtomicConcept("http://example.org/namespacecheck1/A")))(isTrue) &&
+        assert(violations(AtomicConcept("http://example.org/namespacecheck1/D")))(isTrue) &&
+        assert(violations(AtomicConcept("http://example.org/namespacecheck2/G")))(isFalse) &&
+        assert(violations(AtomicConcept("http://example.org/namespacecheck2/H")))(isFalse)
     }
   )
 
   private def namespaceViolations(state: ReasonerState): Set[AtomicConcept] =
-    state.queueDelegates(NamespaceChecker.DelegateKey).asInstanceOf[NamespaceChecker].violations.flatMap {
-      case (left, right) => Set(left, right)
-    }.toSet
+    state
+      .queueDelegates(NamespaceChecker.DelegateKey)
+      .asInstanceOf[NamespaceChecker]
+      .violations
+      .flatMap { case (left, right) =>
+        Set(left, right)
+      }
+      .toSet
 
 }
