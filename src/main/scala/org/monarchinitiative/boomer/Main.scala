@@ -29,11 +29,11 @@ final case class Options(
 object Main extends ZCaseApp[Options] {
 
   override def run(options: Options, arg: RemainingArgs): ZIO[ZEnv, Nothing, ExitCode] = {
-    scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace()
     val program = for {
-      start <- ZIO.effectTotal(System.currentTimeMillis())
+      _ <- ZIO.effectTotal(scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace())
+      start <- clock.nanoTime
       prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(
-        BoomErrorMessage("No namespace should be contained within another; this will interfere with equivalence constraints."))
+        BoomErrorMessage("No namespace should be a lexical substring of another; this will interfere with equivalence constraints."))
       ptable <- OntUtil.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
@@ -45,22 +45,21 @@ object Main extends ZCaseApp[Options] {
       selections = mostProbable.values
       axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
-        ZIO.foreach(selections) {
-          case (selection, best) =>
-            effectBlocking(writer.write(s"${selection.label}\t$best\n"))
+        ZIO.foreach(selections) { case (selection, best) =>
+          effectBlocking(writer.write(s"${selection.label}\t$best\n"))
         }
       }
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
       _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
-      end <- ZIO.effectTotal(System.currentTimeMillis())
-      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000}s"))
+      end <- clock.nanoTime
+      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
     } yield ()
     program
       .as(ExitCode.success)
-      .catchSome {
-        case BoomError(msg) => ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
+      .catchSome { case BoomError(msg) =>
+        ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
       }
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
   }
@@ -83,13 +82,11 @@ object Main extends ZCaseApp[Options] {
   private def writeHotSpots(hotspots: Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]],
                             outputName: String): ZIO[Blocking, Throwable, Unit] =
     ZIO.effect(new PrintWriter(new File(s"$outputName-hotspots.txt"), "utf-8")).bracketAuto { writer =>
-      ZIO.foreach_(hotspots) {
-        case (uncertainty, proposals) =>
-          ZIO.foreach_(proposals) {
-            case ((proposal, isBest), count) =>
-              val isBestText = if (isBest) " (most probable)" else ""
-              effectBlocking(writer.println(s"${proposal.label}$isBestText\t[$count]"))
-          } *> effectBlocking(writer.println())
+      ZIO.foreach_(hotspots) { case (uncertainty, proposals) =>
+        ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
+          val isBestText = if (isBest) " (most probable)" else ""
+          effectBlocking(writer.println(s"${proposal.label}$isBestText\t[$count]"))
+        } *> effectBlocking(writer.println())
       }
     }
 
