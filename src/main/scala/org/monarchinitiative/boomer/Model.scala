@@ -61,7 +61,7 @@ object Model {
 
   /**
     * A group of uncertainties whose states are evaluated combinatorially, increasing the likelihood
-    * that a mutually compatible configuration of these uncertaintites will be found.
+    * that a mutually compatible configuration of these uncertainties will be found.
     */
   final case class Perplexity(uncertainties: Set[Uncertainty]) extends Ambiguity {
 
