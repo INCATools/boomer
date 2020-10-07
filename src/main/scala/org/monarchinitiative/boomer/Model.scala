@@ -110,7 +110,7 @@ object Model {
     def previousReasonerState: ReasonerState
 
     /**
-      * Probability associated with choosing this selection (possibily a joint probability of contained ambiguities).
+      * Probability associated with choosing this selection (possibly a joint probability of contained ambiguities).
       */
     def probability: Double
 
