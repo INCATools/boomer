@@ -29,11 +29,11 @@ final case class Options(
 object Main extends ZCaseApp[Options] {
 
   override def run(options: Options, arg: RemainingArgs): ZIO[ZEnv, Nothing, ExitCode] = {
-    scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace()
     val program = for {
-      start <- ZIO.effectTotal(System.currentTimeMillis())
+      _ <- ZIO.effectTotal(scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace())
+      start <- clock.nanoTime
       prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(
-        BoomErrorMessage("No namespace should be contained within another; this will interfere with equivalence constraints."))
+        BoomErrorMessage("No namespace should be a lexical substring of another; this will interfere with equivalence constraints."))
       ptable <- OntUtil.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
@@ -54,8 +54,8 @@ object Main extends ZCaseApp[Options] {
       _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
-      end <- ZIO.effectTotal(System.currentTimeMillis())
-      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000}s"))
+      end <- clock.nanoTime
+      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
     } yield ()
     program
       .as(ExitCode.success)

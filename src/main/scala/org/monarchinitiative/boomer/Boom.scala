@@ -1,7 +1,7 @@
 package org.monarchinitiative.boomer
 
 import org.geneontology.whelk.BuiltIn._
-import org.geneontology.whelk._
+import org.geneontology.whelk.{AtomicConcept, Axiom, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Model._
 import org.monarchinitiative.boomer.Util.BisectSearchOp
 import zio._

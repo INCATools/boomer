@@ -8,6 +8,9 @@ import caseapp.core.util.Formatter
 import zio._
 import zio.console.{putStrLn, Console}
 
+/**
+ * Adapted from caseapp.cats.IOCaseApp
+ */
 abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T]) extends App {
 
   private[this] def parser: Parser[T] = {
