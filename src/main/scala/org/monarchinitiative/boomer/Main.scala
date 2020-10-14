@@ -23,7 +23,8 @@ final case class Options(
   ontology: String,
   prefixes: String,
   windowCount: Int,
-  runs: Int
+  runs: Int,
+  outputInternalAxioms: Boolean = false
 )
 
 object Main extends ZCaseApp[Options] {
@@ -43,13 +44,14 @@ object Main extends ZCaseApp[Options] {
       hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }
       _ <- writeHotSpots(hotspots, options.output)
       selections = mostProbable.values
-      axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
+      axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms))).to(Set)
+      axiomsUsingEquivalence = OntUtil.collapseEquivalents(axioms)
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
           effectBlocking(writer.write(s"${selection.label}\t$best\n"))
         }
       }
-      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
+      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axiomsUsingEquivalence.toSet[OWLAxiom].asJava))
       _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
