@@ -17,7 +17,6 @@ import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
 import zio.blocking._
 
-import scala.io.Source
 import scala.jdk.CollectionConverters._
 
 object OntUtil {
@@ -29,45 +28,6 @@ object OntUtil {
   private val IsPartOfAP = AnnotationProperty(DCTERMS.IS_PART_OF.stringValue)
   private val UncertaintyClass = Class(s"$BoomPrefix/Uncertainty")
   private val ProposalClass = Class(s"$BoomPrefix/Proposal")
-
-  def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Uncertainty]] =
-    Task
-      .effect(Source.fromFile(file, "utf-8"))
-      .bracketAuto { source =>
-        ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
-      }
-      .map(_.to(Set))
-
-  private def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Uncertainty] = {
-    val columns = line.split("\\t", -1)
-    if (columns.size == 6) {
-      val leftCURIE = columns(0).trim
-      val rightCURIE = columns(1).trim
-      for {
-        leftID <- ZIO.fromOption(expandCURIE(leftCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $leftCURIE"))
-        rightID <- ZIO.fromOption(expandCURIE(rightCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $rightCURIE"))
-        left = AtomicConcept(leftID)
-        right = AtomicConcept(rightID)
-        probProperSubLeftRight <- Task.effect(columns(2).trim.toDouble)
-        probProperSubRightLeft <- Task.effect(columns(3).trim.toDouble)
-        probEquivalent <- Task.effect(columns(4).trim.toDouble)
-        probNoSubsumption <- Task.effect(columns(5).trim.toDouble)
-        disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
-        disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
-      } yield Uncertainty(
-        Set(
-          Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE",
-                   disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right),
-                   probProperSubLeftRight),
-          Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE",
-                   disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left),
-                   probProperSubRightLeft),
-          Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent),
-          Proposal(s"$leftCURIE SiblingOf $rightCURIE", disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
-        ).filter(_.probability > 0.0)
-      )
-    } else Task.fail(BoomErrorMessage(s"Invalid ptable line: $line"))
-  }
 
   def readProbabilisticOntology(file: File): ZIO[Blocking, Throwable, ProbabilisticOntology] = for {
     manager <- Task.effect(OWLManager.createOWLOntologyManager())
@@ -160,7 +120,7 @@ object OntUtil {
     case _                                                        => None
   }
 
-  private def expandCURIE(curie: String, prefixes: Map[String, String]): Option[String] = {
+  def expandCURIE(curie: String, prefixes: Map[String, String]): Option[String] = {
     val protocols = Set("http", "https", "ftp", "urn")
     val items = curie.split(":", 2)
     if (items.size > 1) {

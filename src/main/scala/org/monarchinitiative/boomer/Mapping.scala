@@ -1,0 +1,94 @@
+package org.monarchinitiative.boomer
+
+import java.io.File
+
+import org.geneontology.whelk.{AtomicConcept, Axiom, ConceptInclusion, Reasoner}
+import org.monarchinitiative.boomer.Boom.BoomErrorMessage
+import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
+import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE}
+import zio.blocking.Blocking
+import zio.{Task, ZIO}
+
+import scala.io.Source
+
+object Mapping {
+
+  def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Mapping]] =
+    Task
+      .effect(Source.fromFile(file, "utf-8"))
+      .bracketAuto { source =>
+        ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
+      }
+      .map(_.to(Set))
+
+  private def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Mapping] = {
+    val columns = line.split("\\t", -1)
+    if (columns.size == 6) {
+      val leftCURIE = columns(0).trim
+      val rightCURIE = columns(1).trim
+      for {
+        leftID <- ZIO.fromOption(expandCURIE(leftCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $leftCURIE"))
+        rightID <- ZIO.fromOption(expandCURIE(rightCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $rightCURIE"))
+        left = AtomicConcept(leftID)
+        right = AtomicConcept(rightID)
+        probProperSubLeftRight <- Task.effect(columns(2).trim.toDouble)
+        probProperSubRightLeft <- Task.effect(columns(3).trim.toDouble)
+        probEquivalent <- Task.effect(columns(4).trim.toDouble)
+        probNoSubsumption <- Task.effect(columns(5).trim.toDouble)
+        disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
+        disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
+      } yield {
+        val equivalenceProposal =
+          Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent)
+        Mapping(
+          left,
+          right,
+          Uncertainty(
+            Set(
+              Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE",
+                       disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right),
+                       probProperSubLeftRight),
+              Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE",
+                       disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left),
+                       probProperSubRightLeft),
+              equivalenceProposal,
+              Proposal(s"$leftCURIE SiblingOf $rightCURIE", disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
+            ).filter(_.probability > 0.0)
+          ),
+          equivalenceProposal
+        )
+      }
+    } else Task.fail(BoomErrorMessage(s"Invalid ptable line: $line"))
+  }
+
+  def makeMaximalEquivalenceCliques(mappings: Set[Mapping], assertions: Set[Axiom]): Map[AtomicConcept, Set[AtomicConcept]] = {
+    println("Computing cliques")
+    val allAxioms = assertions ++ mappings.flatMap(_.equivalenceProposal.axioms)
+    val whelk = Reasoner.assert(axioms = allAxioms, disableBottom = true)
+    println("Done clique reasoning")
+    val taxonomy = whelk.computeTaxonomy
+    println("Done taxonomy")
+    val res = taxonomy.map { case (concept, (equivs, _)) => concept -> (equivs + concept) }.to(Map)
+    println("Done Computing cliques")
+    res
+  }
+
+  def groupHotspotsByEquivalenceClique(hotspots: Map[Uncertainty, Map[(Proposal, Boolean), Int]],
+                                       equivalenceCliques: Map[AtomicConcept, Set[AtomicConcept]],
+                                       mappings: Set[Mapping]): Map[Option[Set[AtomicConcept]], Map[Uncertainty, Map[(Proposal, Boolean), Int]]] = {
+    println("Group by clique")
+    val mappingsByUncertainty = mappings.map(mapping => mapping.uncertainty -> mapping).toMap
+    val res = hotspots.groupBy {
+      case (uncertainty, _) =>
+        for {
+          mapping <- mappingsByUncertainty.get(uncertainty)
+          clique <- equivalenceCliques.get(mapping.left)
+        } yield clique
+    }
+    println("Done Group by clique")
+    res
+  }
+
+}
+
+final case class Mapping(left: AtomicConcept, right: AtomicConcept, uncertainty: Uncertainty, equivalenceProposal: Proposal)

@@ -4,7 +4,7 @@ import java.io.{File, FileOutputStream, FileReader, PrintWriter}
 
 import caseapp._
 import io.circe.yaml.parser
-import org.geneontology.whelk.Bridge
+import org.geneontology.whelk.{AtomicConcept, Bridge}
 import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage}
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
@@ -34,14 +34,19 @@ object Main extends ZCaseApp[Options] {
       start <- clock.nanoTime
       prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(
         BoomErrorMessage("No namespace should be a lexical substring of another; this will interfere with equivalence constraints."))
-      ptable <- OntUtil.readPTable(new File(options.ptable), prefixes)
+      mappings <- Mapping.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
-      results <- Boom.evaluate(assertions, ptable, prefixes.values.to(Set), options.windowCount, options.runs)
+      equivCliquesTask = ZIO.effect(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
+      boomTask =
+        ZIO.effect(Boom.evaluate(assertions, mappings.map(_.uncertainty), prefixes.values.to(Set), options.windowCount, options.runs)).flatten
+      (equivCliques, results) <- ZIO.tupledPar(equivCliquesTask, boomTask)
+      _ <- putStrLn(s"Num equiv cliques: ${equivCliques.values.toSet.size}")
       (mostProbable, counted) = Boom.organizeResults(results)
       _ <- ZIO.effect(scribe.info(s"Most probable: ${mostProbable.map(s => Math.log(s._2._1.probability)).sum}"))
       hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }
-      _ <- writeHotSpots(hotspots, options.output)
+      groupedHotspots = Mapping.groupHotspotsByEquivalenceClique(hotspots, equivCliques, mappings)
+      _ <- writeHotSpots(groupedHotspots, options.output)
       selections = mostProbable.values
       axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
@@ -79,14 +84,17 @@ object Main extends ZCaseApp[Options] {
       if ns1.contains(ns2)
     } yield (ns1, ns2)).isEmpty
 
-  private def writeHotSpots(hotspots: Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]],
+  private def writeHotSpots(hotspots: Map[Option[Set[AtomicConcept]], Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]]],
                             outputName: String): ZIO[Blocking, Throwable, Unit] =
     ZIO.effect(new PrintWriter(new File(s"$outputName-hotspots.txt"), "utf-8")).bracketAuto { writer =>
-      ZIO.foreach_(hotspots) { case (uncertainty, proposals) =>
-        ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
-          val isBestText = if (isBest) " (most probable)" else ""
-          effectBlocking(writer.println(s"${proposal.label}$isBestText\t[$count]"))
-        } *> effectBlocking(writer.println())
+      ZIO.foreach_(hotspots) { case (grouping, uncertaintyAndProposals) =>
+        val groupLabel = grouping.getOrElse(Set.empty).map(_.id).toSeq.sorted.mkString(" ")
+        effectBlocking(writer.println(s"Group: $groupLabel")) *>
+          ZIO.foreach_(uncertaintyAndProposals) { case (uncertainty, proposals) =>
+            ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
+              effectBlocking(writer.println(s"${proposal.label}\t[$count]"))
+            } *> effectBlocking(writer.println())
+          } *> effectBlocking(writer.println())
       }
     }
 
