@@ -155,9 +155,11 @@ object OntUtil {
     * @param ci axiom to convert
     * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
     */
-  def whelkToOWL(ci: ConceptInclusion): Option[OWLSubClassOfAxiom] = ci match {
-    case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup)) => Some(SubClassOf(Class(sub), Class(sup)))
-    case _                                                        => None
+  def whelkToOWL(ci: ConceptInclusion, excludeInternal: Boolean): Option[OWLSubClassOfAxiom] = ci match {
+    case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup))
+        if !excludeInternal || (!sub.startsWith(DisjointSiblingPrefix)) && (!sup.startsWith(DisjointSiblingPrefix)) =>
+      Some(SubClassOf(Class(sub), Class(sup)))
+    case _ => None
   }
 
   private def expandCURIE(curie: String, prefixes: Map[String, String]): Option[String] = {

@@ -23,7 +23,8 @@ final case class Options(
   ontology: String,
   prefixes: String,
   windowCount: Int,
-  runs: Int
+  runs: Int,
+  outputInternalAxioms: Boolean = false
 )
 
 object Main extends ZCaseApp[Options] {
@@ -43,7 +44,7 @@ object Main extends ZCaseApp[Options] {
       hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }
       _ <- writeHotSpots(hotspots, options.output)
       selections = mostProbable.values
-      axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
+      axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms)))
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
           effectBlocking(writer.write(s"${selection.label}\t$best\n"))
