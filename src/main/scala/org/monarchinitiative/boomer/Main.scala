@@ -48,7 +48,8 @@ object Main extends ZCaseApp[Options] {
       axiomsUsingEquivalence = OntUtil.collapseEquivalents(axioms)
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
-          effectBlocking(writer.write(s"${selection.label}\t$best\n"))
+          val isBestText = if (best) "(most probable)" else ""
+          effectBlocking(writer.write(s"${selection.label}\t$isBestText\n"))
         }
       }
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axiomsUsingEquivalence.toSet[OWLAxiom].asJava))
