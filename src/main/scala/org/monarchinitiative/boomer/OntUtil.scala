@@ -162,6 +162,19 @@ object OntUtil {
     case _ => None
   }
 
+  /**
+    * If both SubClassOf(A,B) and SubClassOf(B,A) are in the input, replace both with EquivalentClasses(A,B)
+    *
+    * @param axioms input set of subclass axioms
+    * @return set of equivalent class axioms and remaining subclass axioms
+    */
+  def collapseEquivalents(axioms: Set[OWLSubClassOfAxiom]): Set[OWLClassAxiom] =
+    axioms.foldLeft(Set.empty[OWLClassAxiom]) { case (accum, axiom) =>
+      val counterpart = SubClassOf(axiom.getSuperClass, axiom.getSubClass)
+      if (accum(counterpart)) (accum - counterpart) + EquivalentClasses(axiom.getSubClass, axiom.getSuperClass)
+      else accum + axiom
+    }
+
   private def expandCURIE(curie: String, prefixes: Map[String, String]): Option[String] = {
     val protocols = Set("http", "https", "ftp", "urn")
     val items = curie.split(":", 2)
