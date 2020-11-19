@@ -25,7 +25,7 @@ libraryDependencies ++= {
     "org.geneontology"           %% "whelk-owlapi"        % "1.0.4",
     "dev.zio"                    %% "zio"                 % zioVersion,
     "org.phenoscape"             %% "scowl"               % "1.3.4",
-    "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.17",
+    "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.19",
     "commons-codec"               % "commons-codec"       % "1.15",
     "com.outr"                   %% "scribe-slf4j"        % "2.8.6",
     "io.circe"                   %% "circe-yaml"          % "0.13.1",
