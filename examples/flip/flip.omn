@@ -1,0 +1,12 @@
+Prefix: A: <http://example.org/A/>
+Prefix: B: <http://example.org/B/>
+
+Ontology: <http://example.org/flip.owl>
+        
+Class: A:1
+Class: A:2
+    SubClassOf: A:1
+
+Class: B:1
+Class: B:2
+   SubClassOf: B:1
