@@ -49,7 +49,7 @@ object Main extends ZCaseApp[Options] {
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
           val isBestText = if (best) "(most probable)" else ""
-          effectBlocking(writer.write(s"${selection.label}\t$isBestText\n"))
+          effectBlocking(writer.write(s"${selection.label}\t$isBestText\t${selection.probability}\n"))
         }
       }
       outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axiomsUsingEquivalence.toSet[OWLAxiom].asJava))
