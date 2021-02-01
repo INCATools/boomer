@@ -8,7 +8,7 @@ version := "0.1"
 
 licenses := Seq("BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"))
 
-scalaVersion := "2.13.1"
+scalaVersion := "2.13.4"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
@@ -18,7 +18,7 @@ testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 
 fork in Test := true
 
-val zioVersion = "1.0.3"
+val zioVersion = "1.0.4-1"
 
 libraryDependencies ++= {
   Seq(
