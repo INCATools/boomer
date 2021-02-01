@@ -18,11 +18,17 @@ import zio.console._
 import scala.jdk.CollectionConverters._
 
 final case class Options(
+  @ExtraName("f")
   output: String = "output",
+  @ExtraName("t")
   ptable: String,
+  @ExtraName("o")
   ontology: String,
+  @ExtraName("p")
   prefixes: String,
+  @ExtraName("w")
   windowCount: Int,
+  @ExtraName("r")
   runs: Int,
   outputInternalAxioms: Boolean = false
 )
