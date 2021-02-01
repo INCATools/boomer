@@ -34,7 +34,7 @@ Three output files are produced:
 This command uses the `slim-exposure-probs.tsv` probability file and `slim-exposure-probs.owl` ontology file to produce mappings between classes the `slim-exposure-probs.owl` ontology and other ontology terms specified in the `slim-exposure-probs.tsv` file.  
 
 ```bash
-./target/universal/stage/bin/boomer --ptable slim-exposure-probs.tsv --ontology slim-exposure.owl --window-count 10 --runs 20 --prefixes prefixes.yaml
+./target/universal/stage/bin/boomer --ptable slim-exposure-probs.tsv --ontology slim-exposure.owl --window-count 10 --runs 100 --prefixes prefixes.yaml --output exposo
 ```
 
 The `output.txt` file looks like this:
