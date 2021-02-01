@@ -18,11 +18,11 @@ import zio.console._
 import scala.jdk.CollectionConverters._
 
 final case class Options(
-  @ExtraName("f")
+  @ExtraName("o")
   output: String = "output",
   @ExtraName("t")
   ptable: String,
-  @ExtraName("o")
+  @ExtraName("a")
   ontology: String,
   @ExtraName("p")
   prefixes: String,
