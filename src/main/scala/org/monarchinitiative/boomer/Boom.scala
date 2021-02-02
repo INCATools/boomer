@@ -13,11 +13,14 @@ import scala.collection.Searching.InsertionPoint
 
 object Boom {
 
+  type ResolvedUncertainty = (Uncertainty, (Proposal, Boolean))
+  type ResolvedUncertainties = Map[Uncertainty, (Proposal, Boolean)]
+
   def evaluate(assertions: Set[Axiom],
                uncertainties: Set[Uncertainty],
                prohibitedPrefixEquivalences: Set[String],
                windowCount: Int,
-               runs: Int): ZIO[Random, BoomError, List[Map[Uncertainty, (Proposal, Boolean)]]] = {
+               runs: Int): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
     val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
     val binnedUncertainties = Util
       .groupByValueWindows(uncertainties.toList, windowCount, (u: Uncertainty) => u.mostProbable.probability)
@@ -57,17 +60,17 @@ object Boom {
       ZIO.fail(BoomErrorMessage(s"Given ontology has equivalents within namespace:\n$violations"))
     }
 
-  def organizeResults(results: List[Map[Uncertainty, (Proposal, Boolean)]])
-    : (Map[Uncertainty, (Proposal, Boolean)], Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
-    val mostProbableResult = results.maxBy(_.map(_._2._1.probability).sum)
+  def organizeResults(results: List[ResolvedUncertainties]): (ResolvedUncertainties, Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
+    val mostProbableResult = results.maxBy(jointProbability)
     // Count, for each uncertainty, how often each proposal was found
-    val counted = results.flatMap(_.toList).groupMap(_._1)(_._2).map { case (uncertainty, selections) =>
-      uncertainty -> selections.groupMap(identity)(_ => 1).view.mapValues(_.sum).toMap
+    val uncertaintyResolutionsInAllRuns = results.flatMap(_.toList)
+    val counted = uncertaintyResolutionsInAllRuns.groupMap(_._1)(_._2).map { case (uncertainty, selections) =>
+      uncertainty -> selections.groupBy(identity).view.mapValues(_.size).to(Map)
     }
     (mostProbableResult, counted)
   }
 
-  def collectChoices(selection: Selection): Set[(Uncertainty, (Proposal, Boolean))] = selection match {
+  def collectChoices(selection: Selection): Set[ResolvedUncertainty] = selection match {
     case SelectedProposal(proposal, uncertainty, _, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
     case SelectedPerplexityProposal(selected, _, _, _, _) =>
       selected.proposal.to(Set).map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
@@ -155,6 +158,9 @@ object Boom {
     }
 
   private def jointProbability(selections: List[SelectedProposal]): Double = selections.map(s => Math.log(s.selected.probability)).sum
+
+  private def jointProbability(result: ResolvedUncertainties): Double =
+    result.map { case (_, (proposal, _)) => Math.log(proposal.probability) }.sum
 
   private def isValid(state: ReasonerState): Boolean = !isIncoherent(state) && !hasNamespaceViolations(state)
 
