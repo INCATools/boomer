@@ -46,7 +46,7 @@ object Main extends ZCaseApp[Options] {
       assertions = Bridge.ontologyToAxioms(ont)
       results <- Boom.evaluate(assertions, ptable, prefixes.values.to(Set), options.windowCount, options.runs)
       (mostProbable, counted) = Boom.organizeResults(results)
-      _ <- ZIO.effect(scribe.info(s"Most probable: ${mostProbable.map(s => Math.log(s._2._1.probability)).sum}"))
+      _ <- ZIO.effect(scribe.info(s"Most probable: ${Math.exp(mostProbable.map(s => Math.log(s._2._1.probability)).sum)}"))
       hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }
       _ <- writeHotSpots(hotspots, options.output)
       selections = mostProbable.values
@@ -94,7 +94,7 @@ object Main extends ZCaseApp[Options] {
       ZIO.foreach_(hotspots) { case (uncertainty, proposals) =>
         ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
           val isBestText = if (isBest) " (most probable)" else ""
-          effectBlocking(writer.println(s"${proposal.label}$isBestText\t[$count]"))
+          effectBlocking(writer.println(s"${proposal.label}$isBestText\t${proposal.probability}\t[$count]"))
         } *> effectBlocking(writer.println())
       }
     }
