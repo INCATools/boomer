@@ -1,0 +1,9 @@
+Prefix: A: <http://purl.obolibrary.org/obo/A_>
+Prefix: B: <http://purl.obolibrary.org/obo/B_>
+Prefix: C: <http://purl.obolibrary.org/obo/C_>
+
+Ontology: <http://example.org/triangle.owl>
+        
+Class: A:1
+Class: B:1
+Class: C:1
