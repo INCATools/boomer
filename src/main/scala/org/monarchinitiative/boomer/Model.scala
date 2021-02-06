@@ -12,8 +12,7 @@ object Model {
 
   }
 
-  /**
-    * A set of axioms representing a possible state of the world. All axioms
+  /** A set of axioms representing a possible state of the world. All axioms
     * within the proposal are considered together as a unit.
     *
     * @param label       a descriptive label for the condition represented by this group of axioms
@@ -22,21 +21,18 @@ object Model {
     */
   final case class Proposal(label: String, axioms: Set[ConceptInclusion], probability: Double) extends GeneralizedProposal
 
-  /**
-    * A group of hypothetical proposals, either a single set of alternative states (Uncertainty),
+  /** A group of hypothetical proposals, either a single set of alternative states (Uncertainty),
     * or a combinatorial set of states representing multiple Uncertainties (Perplexity)
     */
   sealed trait Ambiguity {
 
-    /**
-      * Proposals to attempt, in decreasing order of prior probability
+    /** Proposals to attempt, in decreasing order of prior probability
       */
-    def sorted: List[GeneralizedProposal]
+    def sorted: Iterable[GeneralizedProposal]
 
   }
 
-  /**
-    * A set of proposals (axiom sets) which represent alternative possibilities. One
+  /** A set of proposals (axiom sets) which represent alternative possibilities. One
     * proposal must be selected to resolve the uncertainty.
     */
   final case class Uncertainty(proposals: Set[Proposal]) extends Ambiguity {
@@ -45,41 +41,45 @@ object Model {
 
     override val sorted: List[Proposal] = proposals.toList.sortBy(_.probability)(Ordering[Double].reverse)
 
+    override val hashCode: Int = scala.util.hashing.MurmurHash3.productHash(this)
+
   }
 
-  /**
-    * A joint proposal consisting of one proposal from each uncertainty within a Perplexity.
+  /** A joint proposal consisting of one proposal from each uncertainty within a Perplexity.
     */
   final case class PerplexityProposal(proposal: Map[Uncertainty, Proposal]) extends GeneralizedProposal {
 
-    /**
-      * The set union of all axioms from the group of proposals.
+    /** The set union of all axioms from the group of proposals.
       */
     override def axioms: Set[ConceptInclusion] = proposal.values.flatMap(_.axioms).to(Set)
 
   }
 
-  /**
-    * A group of uncertainties whose states are evaluated combinatorially, increasing the likelihood
+  /** A group of uncertainties whose states are evaluated combinatorially, increasing the likelihood
     * that a mutually compatible configuration of these uncertainties will be found.
     */
   final case class Perplexity(uncertainties: Set[Uncertainty]) extends Ambiguity {
 
-    /**
-      * All possible combinations of a selection from each Uncertainty within this Perplexity.
-      * Proposals are returning in order of decreasing joint probability.
+    /** All possible combinations of a selection from each Uncertainty within this Perplexity.
+      * Proposals are returned in order of decreasing joint probability.
       * The size of this list will grow exponentially with the number of uncertainties.
       */
-    def sorted: List[PerplexityProposal] =
-      uncertainties
-        .foldLeft(List(Map.empty[Uncertainty, Proposal])) { case (acc, uncertainty) =>
-          uncertainty.proposals.toList.flatMap(p => acc.map(m => m.updated(uncertainty, p)))
+    def sorted: LazyList[PerplexityProposal] = {
+      val sortedUncertainties = uncertainties.to(List).sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+      val lazySorted = sortedUncertainties.to(LazyList)
+      def loop(theseUncertainties: LazyList[Uncertainty]): LazyList[Map[Uncertainty, Proposal]] =
+        theseUncertainties match {
+          case firstUncertainty #:: restUncertainties =>
+            for {
+              proposal <- firstUncertainty.sorted.to(LazyList)
+              moreProposals <- loop(restUncertainties)
+            } yield moreProposals + (firstUncertainty -> proposal)
+          case empty => LazyList(Map.empty[Uncertainty, Proposal])
         }
-        .sortBy(_.values.map(_.probability).product)(Ordering[Double].reverse)
-        .map(PerplexityProposal)
+      loop(lazySorted).map(proposals => PerplexityProposal(proposals))
+    }
 
-    /**
-      * Create a new Perplexity combining the uncertainties within the given Ambiguity
+    /** Create a new Perplexity combining the uncertainties within the given Ambiguity
       * (a single Uncertainty or multiple in a Perplexity) with the uncertainties in this Perplexity.
       */
     def add(ambiguity: Ambiguity): Perplexity = ambiguity match {
@@ -89,28 +89,23 @@ object Model {
 
   }
 
-  /**
-    * An ambiguity which has had a proposal successfully added to a reasoner state.
+  /** An ambiguity which has had a proposal successfully added to a reasoner state.
     */
   sealed trait Selection {
 
-    /**
-      * Ambiguities remaining to evaluate after adding this selection.
+    /** Ambiguities remaining to evaluate after adding this selection.
       */
     def remainingAmbiguities: List[Ambiguity]
 
-    /**
-      * Reasoner state resulting from adding this selection.
+    /** Reasoner state resulting from adding this selection.
       */
     def reasonerState: ReasonerState
 
-    /**
-      * Reasoner state prior to adding this selection.
+    /** Reasoner state prior to adding this selection.
       */
     def previousReasonerState: ReasonerState
 
-    /**
-      * Probability associated with choosing this selection (possibly a joint probability of contained ambiguities).
+    /** Probability associated with choosing this selection (possibly a joint probability of contained ambiguities).
       */
     def probability: Double
 

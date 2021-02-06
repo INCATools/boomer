@@ -4,7 +4,7 @@ import java.io.{File, FileOutputStream, FileReader, PrintWriter}
 
 import caseapp._
 import io.circe.yaml.parser
-import org.geneontology.whelk.{AtomicConcept, Bridge}
+import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner}
 import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage}
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
@@ -30,6 +30,7 @@ final case class Options(
   windowCount: Int,
   @ExtraName("r")
   runs: Int,
+  exhaustiveSearchLimit: Int = 20,
   outputInternalAxioms: Boolean = false
 )
 
@@ -44,9 +45,13 @@ object Main extends ZCaseApp[Options] {
       mappings <- Mapping.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
-      equivCliquesTask = ZIO.effect(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
+      equivCliquesTask = ZIO.effectTotal(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
+      prohibitedPrefixEquivalences = prefixes.values.to(Set)
       boomTask =
-        ZIO.effect(Boom.evaluate(assertions, mappings.map(_.uncertainty), prefixes.values.to(Set), options.windowCount, options.runs)).flatten
+        ZIO.effect {
+          val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
+          Boom.evaluate(assertions, mappings.map(_.uncertainty), prohibitedPrefixEquivalences, whelk, options.windowCount, options.runs, false)
+        }.flatten
       (equivCliques, results) <- ZIO.tupledPar(equivCliquesTask, boomTask)
       _ <- putStrLn(s"Num equiv cliques: ${equivCliques.values.toSet.size}")
       (mostProbable, counted) = Boom.organizeResults(results)
@@ -78,14 +83,14 @@ object Main extends ZCaseApp[Options] {
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
   }
 
-  private def prefixesFromFile(filename: String): Task[Map[String, String]] =
+  def prefixesFromFile(filename: String): Task[Map[String, String]] =
     ZIO.effect(new FileReader(new File(filename))).bracketAuto { reader =>
       ZIO.fromEither(parser.parse(reader)).flatMap { json =>
         ZIO.fromEither(json.as[Map[String, String]])
       }
     }
 
-  private def checkNamespacesNonOverlapping(prefixes: Map[String, String]): Boolean =
+  def checkNamespacesNonOverlapping(prefixes: Map[String, String]): Boolean =
     (for {
       ns1 <- prefixes.values
       ns2 <- prefixes.values
