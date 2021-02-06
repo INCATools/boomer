@@ -97,8 +97,7 @@ object OntUtil {
     newClass = AtomicConcept(s"urn:uuid:$uuid")
   } yield Set(ConceptInclusion(newClass, axiom.subclass), ConceptInclusion(Conjunction(newClass, axiom.superclass), Bottom))
 
-  /**
-    * This produces the same axioms as negating the reversed concept inclusion (superclass/subclass).
+  /** This produces the same axioms as negating the reversed concept inclusion (superclass/subclass).
     * It is specialized for two named classes so that it can produce a deterministic IRI for
     * the generated sibling class.
     */
@@ -109,16 +108,29 @@ object OntUtil {
     Set(ConceptInclusion(sibling, superclass), ConceptInclusion(Conjunction(sibling, subclass), Bottom))
   }
 
-  /**
-    * Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
+  /** Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
     *
     * @param ci axiom to convert
     * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
     */
-  def whelkToOWL(ci: ConceptInclusion): Option[OWLSubClassOfAxiom] = ci match {
-    case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup)) => Some(SubClassOf(Class(sub), Class(sup)))
-    case _                                                        => None
+  def whelkToOWL(ci: ConceptInclusion, excludeInternal: Boolean): Option[OWLSubClassOfAxiom] = ci match {
+    case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup))
+        if !excludeInternal || (!sub.startsWith(DisjointSiblingPrefix)) && (!sup.startsWith(DisjointSiblingPrefix)) =>
+      Some(SubClassOf(Class(sub), Class(sup)))
+    case _ => None
   }
+
+  /** If both SubClassOf(A,B) and SubClassOf(B,A) are in the input, replace both with EquivalentClasses(A,B)
+    *
+    * @param axioms input set of subclass axioms
+    * @return set of equivalent class axioms and remaining subclass axioms
+    */
+  def collapseEquivalents(axioms: Set[OWLSubClassOfAxiom]): Set[OWLClassAxiom] =
+    axioms.foldLeft(Set.empty[OWLClassAxiom]) { case (accum, axiom) =>
+      val counterpart = SubClassOf(axiom.getSuperClass, axiom.getSubClass)
+      if (accum(counterpart)) (accum - counterpart) + EquivalentClasses(axiom.getSubClass, axiom.getSuperClass)
+      else accum + axiom
+    }
 
   def expandCURIE(curie: String, prefixes: Map[String, String]): Option[String] = {
     val protocols = Set("http", "https", "ftp", "urn")

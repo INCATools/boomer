@@ -18,12 +18,19 @@ import zio.console._
 import scala.jdk.CollectionConverters._
 
 final case class Options(
+  @ExtraName("o")
   output: String = "output",
+  @ExtraName("t")
   ptable: String,
+  @ExtraName("a")
   ontology: String,
+  @ExtraName("p")
   prefixes: String,
+  @ExtraName("w")
   windowCount: Int,
-  runs: Int
+  @ExtraName("r")
+  runs: Int,
+  outputInternalAxioms: Boolean = false
 )
 
 object Main extends ZCaseApp[Options] {
@@ -48,13 +55,15 @@ object Main extends ZCaseApp[Options] {
       groupedHotspots = Mapping.groupHotspotsByEquivalenceClique(hotspots, equivCliques, mappings)
       _ <- writeHotSpots(groupedHotspots, options.output)
       selections = mostProbable.values
-      axioms = selections.flatMap(_._1.axioms.flatMap(OntUtil.whelkToOWL))
+      axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms))).to(Set)
+      axiomsUsingEquivalence = OntUtil.collapseEquivalents(axioms)
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
         ZIO.foreach(selections) { case (selection, best) =>
-          effectBlocking(writer.write(s"${selection.label}\t$best\n"))
+          val isBestText = if (best) "(most probable)" else ""
+          effectBlocking(writer.write(s"${selection.label}\t$isBestText\t${selection.probability}\n"))
         }
       }
-      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axioms.toSet[OWLAxiom].asJava))
+      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axiomsUsingEquivalence.toSet[OWLAxiom].asJava))
       _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
