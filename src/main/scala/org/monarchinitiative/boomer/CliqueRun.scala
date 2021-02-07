@@ -54,6 +54,19 @@ object CliqueRun extends ZCaseApp[Options] {
       _ <- ZIO.effect(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
       end <- clock.nanoTime
       _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
+      selections = resolvedAsOne.values
+      axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms))).to(Set)
+      axiomsUsingEquivalence = OntUtil.collapseEquivalents(axioms)
+      _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
+        ZIO.foreach(selections) { case (selection, best) =>
+          val isBestText = if (best) "(most probable)" else ""
+          effectBlocking(writer.write(s"${selection.label}\t$isBestText\t${selection.probability}\n"))
+        }
+      }
+      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axiomsUsingEquivalence.toSet[OWLAxiom].asJava))
+      _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
+        effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
+      }
     } yield ()
     program
       .as(ExitCode.success)
