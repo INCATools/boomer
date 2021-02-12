@@ -5,7 +5,7 @@ import java.io.{File, FileOutputStream, FileReader, PrintWriter}
 import caseapp._
 import io.circe.yaml.parser
 import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner}
-import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage}
+import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage, ResolvedUncertainties}
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
@@ -45,21 +45,32 @@ object Main extends ZCaseApp[Options] {
       mappings <- Mapping.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
-      equivCliquesTask = ZIO.effectTotal(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
       prohibitedPrefixEquivalences = prefixes.values.to(Set)
-      boomTask =
-        ZIO.effect {
-          val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
-          Boom.evaluate(assertions, mappings.map(_.uncertainty), prohibitedPrefixEquivalences, whelk, options.windowCount, options.runs, false)
-        }.flatten
-      (equivCliques, results) <- ZIO.tupledPar(equivCliquesTask, boomTask)
+      whelkTask = ZIO.effectTotal(
+        Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil))))
+      equivCliquesTask = ZIO.effectTotal(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
+      (equivCliques, whelk) <- ZIO.tupledPar(equivCliquesTask, whelkTask)
       _ <- putStrLn(s"Num equiv cliques: ${equivCliques.values.toSet.size}")
-      (mostProbable, counted) = Boom.organizeResults(results)
-      _ <- ZIO.effect(scribe.info(s"Most probable: ${mostProbable.map(s => Math.log(s._2._1.probability)).sum}"))
-      hotspots = counted.filter { case (_, proposalsToCounts) => proposalsToCounts.size > 1 }
-      groupedHotspots = Mapping.groupHotspotsByEquivalenceClique(hotspots, equivCliques, mappings)
-      _ <- writeHotSpots(groupedHotspots, options.output)
-      selections = mostProbable.values
+      grouped = groupByClique(mappings, equivCliques)
+      _ <- ZIO.effect(scribe.info(s"Num mapping cliques: ${grouped.size}"))
+      _ <- ZIO.foreach_(grouped) { case (grouping, mappingGroup) =>
+        putStrLn(mappingGroup.size.toString)
+      }
+      runs = grouped.values.to(List)
+      (doExhaustive, doShuffled) = runs.partition(_.size <= options.exhaustiveSearchLimit)
+      exhaustiveResolvedCliques <- ZIO.foreach(doExhaustive) { runMappings => //FIXME par
+        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prefixes.values.to(Set), whelk, options.windowCount, 1, true)
+      }
+      shuffledResolvedCliques <- ZIO.foreachPar(doShuffled) { runMappings =>
+        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prefixes.values.to(Set), whelk, options.windowCount, options.runs, false)
+      }
+      bestResolutionsForShuffledCliques = shuffledResolvedCliques.map(_.maxBy(Boom.jointProbability))
+      resolvedAsOne = (exhaustiveResolvedCliques.flatten ::: bestResolutionsForShuffledCliques).fold(ResolvedUncertainties.empty)((a, b) => a ++ b)
+      _ <- ZIO.effect(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
+      _ <- ZIO.effect(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
+      end <- clock.nanoTime
+      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
+      selections = resolvedAsOne.values
       axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms))).to(Set)
       axiomsUsingEquivalence = OntUtil.collapseEquivalents(axioms)
       _ <- ZIO.effect(new PrintWriter(new File(s"${options.output}.txt"), "utf-8")).bracketAuto { writer =>
@@ -72,8 +83,6 @@ object Main extends ZCaseApp[Options] {
       _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
-      end <- clock.nanoTime
-      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
     } yield ()
     program
       .as(ExitCode.success)
@@ -81,6 +90,7 @@ object Main extends ZCaseApp[Options] {
         ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
       }
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
+
   }
 
   def prefixesFromFile(filename: String): Task[Map[String, String]] =
@@ -111,5 +121,8 @@ object Main extends ZCaseApp[Options] {
           } *> effectBlocking(writer.println())
       }
     }
+
+  private def groupByClique(mappings: Set[Mapping], cliques: Map[AtomicConcept, Set[AtomicConcept]]): Map[Set[AtomicConcept], Set[Mapping]] =
+    mappings.groupBy(mapping => cliques.getOrElse(mapping.left, Set(mapping.left)))
 
 }

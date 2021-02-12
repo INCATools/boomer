@@ -169,34 +169,6 @@ object Boom {
         }
     }
 
-  final private case class Resolution(uncertainty: Uncertainty, proposal: Proposal)
-
-  final private case class DwindlingUncertainty(uncertainty: Uncertainty,
-                                                proposal: Proposal,
-                                                selected: List[Resolution],
-                                                previousReasonerState: ReasonerState,
-                                                remaining: List[Uncertainty]) {
-
-    /** Log joint probability resulting from this proposal and
-      * all subsequent highest probability choices.
-      */
-    val bestCaseScenario: Double = Math.log(proposal.probability) +
-      remaining.map(u => Math.log(u.mostProbable.probability)).sum +
-      selected.map(p => Math.log(p.proposal.probability)).sum
-
-  }
-
-  private object DwindlingUncertainty {
-
-    implicit val ordering: Ordering[DwindlingUncertainty] = new Ordering[DwindlingUncertainty]() {
-
-      override def compare(x: DwindlingUncertainty, y: DwindlingUncertainty): Int =
-        Ordering[Double].compare(x.bestCaseScenario, y.bestCaseScenario)
-
-    }
-
-  }
-
   sealed private trait DwindleStatus
 
   final private case class Open(dus: List[DwindlingUncertainty]) extends DwindleStatus
@@ -207,7 +179,7 @@ object Boom {
 
   private def resolvePerplexity(perplexity: Perplexity, reasonerState: ReasonerState): Either[BoomError, Resolved] = {
     val uncertainties = perplexity.uncertainties.to(List).sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    uncertainties match {
+    scala.util.Random.shuffle(uncertainties) match {
       case first :: rest =>
         val dus = first.proposals.to(List).map(p => DwindlingUncertainty(first, p, Nil, reasonerState, rest))
         val queue = PriorityQueue(dus: _*)
@@ -215,7 +187,6 @@ object Boom {
           case Closed        => Left(BoomErrorMessage("No possible resolution of perplexity"))
           case res: Resolved => Right(res)
           case _: Open       => Left(BoomErrorMessage("Perplexity resolution terminated with unresolved uncertainty"))
-
         }
       case Nil => Left(BoomErrorMessage("A perplexity was created without any uncertainties"))
     }

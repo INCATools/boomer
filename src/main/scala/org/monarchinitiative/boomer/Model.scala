@@ -141,4 +141,32 @@ object Model {
 
   }
 
+  final case class Resolution(uncertainty: Uncertainty, proposal: Proposal)
+
+  final case class DwindlingUncertainty(uncertainty: Uncertainty,
+                                        proposal: Proposal,
+                                        selected: List[Resolution],
+                                        previousReasonerState: ReasonerState,
+                                        remaining: List[Uncertainty]) {
+
+    /** Log joint probability resulting from this proposal and
+      * all subsequent highest probability choices.
+      */
+    val bestCaseScenario: Double = Math.log(proposal.probability) +
+      remaining.map(u => Math.log(u.mostProbable.probability)).sum +
+      selected.map(p => Math.log(p.proposal.probability)).sum
+
+  }
+
+  object DwindlingUncertainty {
+
+    implicit val ordering: Ordering[DwindlingUncertainty] = new Ordering[DwindlingUncertainty]() {
+
+      override def compare(x: DwindlingUncertainty, y: DwindlingUncertainty): Int =
+        Ordering[Double].compare(x.bestCaseScenario, y.bestCaseScenario)
+
+    }
+
+  }
+
 }
