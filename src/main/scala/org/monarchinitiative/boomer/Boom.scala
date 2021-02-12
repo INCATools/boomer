@@ -1,5 +1,6 @@
 package org.monarchinitiative.boomer
 
+import jp.yukoba.collection.immutable.PriorityQueue
 import org.geneontology.whelk.BuiltIn._
 import org.geneontology.whelk.{AtomicConcept, Axiom, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Model._
@@ -158,16 +159,97 @@ object Boom {
           SelectedProposal(proposal, ag, remaining, newState, reasonerState)
         }
       case perplexity: Perplexity =>
-        val maybeAdded = perplexity.sorted
-          .map { proposal =>
-            val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
-            proposal -> newReasonerState
-          }
-          .find { case (_, state) => isValid(state) }
-        maybeAdded.map { case (proposal, newState) =>
-          SelectedPerplexityProposal(proposal, perplexity, remaining, newState, reasonerState)
+        resolvePerplexity(perplexity, reasonerState) match {
+          case Right(Resolved(proposals, newState)) =>
+            val selected = PerplexityProposal(proposals.map(res => res.uncertainty -> res.proposal).to(Map))
+            Some(SelectedPerplexityProposal(selected, perplexity, remaining, newState, reasonerState))
+          case Left(error) =>
+            scribe.error(error.message)
+            None //FIXME use error
         }
     }
+
+  final private case class Resolution(uncertainty: Uncertainty, proposal: Proposal)
+
+  final private case class DwindlingUncertainty(uncertainty: Uncertainty,
+                                                proposal: Proposal,
+                                                selected: List[Resolution],
+                                                previousReasonerState: ReasonerState,
+                                                remaining: List[Uncertainty]) {
+
+    /** Log joint probability resulting from this proposal and
+      * all subsequent highest probability choices.
+      */
+    val bestCaseScenario: Double = Math.log(proposal.probability) +
+      remaining.map(u => Math.log(u.mostProbable.probability)).sum +
+      selected.map(p => Math.log(p.proposal.probability)).sum
+
+  }
+
+  private object DwindlingUncertainty {
+
+    implicit val ordering: Ordering[DwindlingUncertainty] = new Ordering[DwindlingUncertainty]() {
+
+      override def compare(x: DwindlingUncertainty, y: DwindlingUncertainty): Int =
+        Ordering[Double].compare(x.bestCaseScenario, y.bestCaseScenario)
+
+    }
+
+  }
+
+  sealed private trait DwindleStatus
+
+  final private case class Open(dus: List[DwindlingUncertainty]) extends DwindleStatus
+
+  final private case class Resolved(proposals: List[Resolution], reasonerState: ReasonerState) extends DwindleStatus
+
+  private object Closed extends DwindleStatus
+
+  private def resolvePerplexity(perplexity: Perplexity, reasonerState: ReasonerState): Either[BoomError, Resolved] = {
+    val uncertainties = perplexity.uncertainties.to(List).sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+    uncertainties match {
+      case first :: rest =>
+        val dus = first.proposals.to(List).map(p => DwindlingUncertainty(first, p, Nil, reasonerState, rest))
+        val queue = PriorityQueue(dus: _*)
+        processQueue(queue) match {
+          case Closed        => Left(BoomErrorMessage("No possible resolution of perplexity"))
+          case res: Resolved => Right(res)
+          case _: Open       => Left(BoomErrorMessage("Perplexity resolution terminated with unresolved uncertainty"))
+
+        }
+      case Nil => Left(BoomErrorMessage("A perplexity was created without any uncertainties"))
+    }
+  }
+
+  @tailrec
+  private def processQueue(queue: PriorityQueue[DwindlingUncertainty]): DwindleStatus =
+    queue.dequeueOption match {
+      case Some((next, remaining)) =>
+        dwindle(next) match {
+          case Open(dus)     => processQueue(remaining.enqueue(dus))
+          case Closed        => processQueue(remaining)
+          case res: Resolved => res
+        }
+      case None => Closed
+    }
+
+  private def dwindle(du: DwindlingUncertainty): DwindleStatus = {
+    val newReasonerState = Reasoner.assert(du.proposal.axioms, du.previousReasonerState)
+    if (isValid(newReasonerState)) {
+      val newSelected = Resolution(du.uncertainty, du.proposal) :: du.selected
+      du.remaining match {
+        case next :: rest =>
+          val dus = next.proposals.to(List).map(p => DwindlingUncertainty(next, p, newSelected, newReasonerState, rest))
+          Open(dus)
+        case Nil => Resolved(newSelected, newReasonerState)
+      }
+    } else {
+//      val one: BigInt = 1
+//      val eliminated = du.remaining.map(_.proposals.size).foldLeft(one)(_ * _)
+//      scribe.info(s"Eliminated choices: $eliminated")
+      Closed
+    }
+  }
 
   private def jointProbability(selections: List[SelectedProposal]): Double = selections.map(s => Math.log(s.selected.probability)).sum
 

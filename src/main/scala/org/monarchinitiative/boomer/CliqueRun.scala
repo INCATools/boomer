@@ -15,6 +15,7 @@ import zio.ZIO.ZIOAutoCloseableOps
 import zio._
 import zio.blocking._
 import zio.console._
+import scala.Ordering.Double.TotalOrdering
 
 import scala.jdk.CollectionConverters._
 
@@ -42,7 +43,7 @@ object CliqueRun extends ZCaseApp[Options] {
       }
       runs = grouped.values.to(List)
       (doExhaustive, doShuffled) = runs.partition(_.size <= options.exhaustiveSearchLimit)
-      exhaustiveResolvedCliques <- ZIO.foreachPar(doExhaustive) { runMappings =>
+      exhaustiveResolvedCliques <- ZIO.foreach(doExhaustive) { runMappings => //FIXME par
         Boom.evaluate(assertions, runMappings.map(_.uncertainty), prefixes.values.to(Set), whelk, options.windowCount, 1, true)
       }
       shuffledResolvedCliques <- ZIO.foreachPar(doShuffled) { runMappings =>
