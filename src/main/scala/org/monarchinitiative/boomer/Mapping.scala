@@ -3,7 +3,7 @@ package org.monarchinitiative.boomer
 import java.io.File
 
 import org.geneontology.whelk.{AtomicConcept, Axiom, ConceptInclusion, Reasoner}
-import org.monarchinitiative.boomer.Boom.BoomErrorMessage
+import org.monarchinitiative.boomer.Boom.{BoomErrorMessage, ResolvedUncertainties}
 import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
 import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE}
 import zio.blocking.Blocking
@@ -62,31 +62,39 @@ object Mapping {
   }
 
   def makeMaximalEquivalenceCliques(mappings: Set[Mapping], assertions: Set[Axiom]): Map[AtomicConcept, Set[AtomicConcept]] = {
-    println("Computing cliques")
     val allAxioms = assertions ++ mappings.flatMap(_.equivalenceProposal.axioms)
     val whelk = Reasoner.assert(axioms = allAxioms, disableBottom = true)
-    println("Done clique reasoning")
     val taxonomy = whelk.computeTaxonomy
-    println("Done taxonomy")
-    val res = taxonomy.map { case (concept, (equivs, _)) => concept -> (equivs + concept) }.to(Map)
-    println("Done Computing cliques")
-    res
+    taxonomy.map { case (concept, (equivs, _)) => concept -> (equivs + concept) }.to(Map)
   }
 
   def groupHotspotsByEquivalenceClique(hotspots: Map[Uncertainty, Map[(Proposal, Boolean), Int]],
                                        equivalenceCliques: Map[AtomicConcept, Set[AtomicConcept]],
                                        mappings: Set[Mapping]): Map[Option[Set[AtomicConcept]], Map[Uncertainty, Map[(Proposal, Boolean), Int]]] = {
-    println("Group by clique")
     val mappingsByUncertainty = mappings.map(mapping => mapping.uncertainty -> mapping).toMap
-    val res = hotspots.groupBy {
-      case (uncertainty, _) =>
-        for {
+    val res = hotspots.groupBy { case (uncertainty, _) =>
+      for {
+        mapping <- mappingsByUncertainty.get(uncertainty)
+        clique <- equivalenceCliques.get(mapping.left)
+      } yield clique
+    }
+    res
+  }
+
+  def groupResultsByEquivalenceClique(results: List[ResolvedUncertainties],
+                                      equivalenceCliques: Map[AtomicConcept, Set[AtomicConcept]],
+                                      mappings: Set[Mapping]): Map[Set[AtomicConcept], ResolvedUncertainties] = {
+    val mappingsByUncertainty = mappings.map(mapping => mapping.uncertainty -> mapping).toMap
+    results
+      .map { result =>
+        val cliqueOption = for {
+          (uncertainty, _) <- result.headOption
           mapping <- mappingsByUncertainty.get(uncertainty)
           clique <- equivalenceCliques.get(mapping.left)
         } yield clique
-    }
-    println("Done Group by clique")
-    res
+        cliqueOption.getOrElse(Set.empty) -> result
+      }
+      .to(Map)
   }
 
 }
