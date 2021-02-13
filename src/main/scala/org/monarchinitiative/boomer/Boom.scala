@@ -179,7 +179,7 @@ object Boom {
 
   private def resolvePerplexity(perplexity: Perplexity, reasonerState: ReasonerState): Either[BoomError, Resolved] = {
     val uncertainties = perplexity.uncertainties.to(List).sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
-    scala.util.Random.shuffle(uncertainties) match {
+    uncertainties match {
       case first :: rest =>
         val dus = first.proposals.to(List).map(p => DwindlingUncertainty(first, p, Nil, reasonerState, rest))
         val queue = PriorityQueue(dus: _*)
