@@ -1,6 +1,6 @@
 package org.monarchinitiative.boomer
 
-import org.geneontology.whelk.{AtomicConcept, BuiltIn, ConceptInclusion, Conjunction}
+import org.geneontology.whelk._
 import org.monarchinitiative.boomer.Boom.UnresolvableUncertainties
 import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
 import org.monarchinitiative.boomer.TestUtil._
@@ -13,14 +13,18 @@ object TestUnresolvable extends DefaultRunnableSpec {
     testM("Ensure reasonable behavior when uncertainties are unresolvable") {
       val resultIO = for {
         axioms <- loadTestAxiomsFromFile("unresolvable-mappings-test1.ofn")
-        result <- Boom.evaluate(axioms, uncertainties1, Set.empty, 10, 1)
+        delegates = Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set.empty, Nil)) //TODO handle error if this is not provided
+        whelk = Reasoner.assert(axioms, delegates)
+        result <- Boom.evaluate(axioms, uncertainties1, Set.empty, whelk, 10, 1, false)
       } yield result
       assertM(resultIO.flip)(equalTo(UnresolvableUncertainties))
     },
     testM("Ensure a perplexity can be created if there is a conflict with the first uncertainty") {
       for {
         axioms <- loadTestAxiomsFromFile("unresolvable-mappings-test2.ofn")
-        result <- Boom.evaluate(axioms, uncertainties2, Set.empty, 10, 1)
+        delegates = Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set.empty, Nil))
+        whelk = Reasoner.assert(axioms, delegates)
+        result <- Boom.evaluate(axioms, uncertainties2, Set.empty, whelk, 10, 1, false)
       } yield assert(result)(isNonEmpty)
     }
   )
