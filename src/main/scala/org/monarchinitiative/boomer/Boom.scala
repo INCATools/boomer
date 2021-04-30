@@ -1,5 +1,6 @@
 package org.monarchinitiative.boomer
 
+import jp.yukoba.collection.immutable.PriorityQueue
 import org.geneontology.whelk.BuiltIn._
 import org.geneontology.whelk.{AtomicConcept, Axiom, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Model._
@@ -16,12 +17,19 @@ object Boom {
   type ResolvedUncertainty = (Uncertainty, (Proposal, Boolean))
   type ResolvedUncertainties = Map[Uncertainty, (Proposal, Boolean)]
 
+  object ResolvedUncertainties {
+
+    def empty: ResolvedUncertainties = Map.empty[Uncertainty, (Proposal, Boolean)]
+
+  }
+
   def evaluate(assertions: Set[Axiom],
                uncertainties: Set[Uncertainty],
                prohibitedPrefixEquivalences: Set[String],
+               initialReasonerState: ReasonerState,
                windowCount: Int,
-               runs: Int): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
-    val whelk = Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
+               runs: Int,
+               exhaustive: Boolean): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
     val binnedUncertainties = Util
       .groupByValueWindows(uncertainties.toList, windowCount, (u: Uncertainty) => u.mostProbable.probability)
       .filter(_.nonEmpty)
@@ -33,7 +41,7 @@ object Boom {
     scribe.info(s"Max possible joint probability: $maxProbability")
     val oneEvaluation = for {
       orderedUncertainties <- shuffleWithinWindows(binnedUncertainties)
-      selections <- evaluateInOrder(whelk, orderedUncertainties, prohibitedPrefixEquivalences)
+      selections <- evaluateInOrder(initialReasonerState, orderedUncertainties, prohibitedPrefixEquivalences, exhaustive)
     } yield selections.flatMap(collectChoices).toMap
     ZIO.collectAllPar(List.fill(runs)(oneEvaluation))
   }
@@ -43,9 +51,10 @@ object Boom {
 
   def evaluateInOrder(initialState: ReasonerState,
                       uncertainties: List[Uncertainty],
-                      prohibitedPrefixEquivalences: Set[String]): IO[BoomError, List[Selection]] =
+                      prohibitedPrefixEquivalences: Set[String],
+                      exhaustive: Boolean): IO[BoomError, List[Selection]] =
     if (isValid(initialState))
-      resolve(uncertainties, initialState).map { selected =>
+      resolve(uncertainties, initialState, exhaustive).map { selected =>
         val jointProbability = selected.map(s => Math.log(s.probability)).sum
         scribe.info(s"Found joint probability: $jointProbability")
         selected
@@ -76,11 +85,16 @@ object Boom {
       selected.proposal.to(Set).map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
   }
 
-  def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState): IO[BoomError, List[Selection]] =
+  def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState, exhaustive: Boolean): IO[BoomError, List[Selection]] =
     uncertainties match {
       case Nil => ZIO.fail(BoomErrorMessage("No uncertainties to resolve."))
       case next :: remaining =>
-        tryAdding(next, remaining, initialReasonerState) match {
+        val result = if (exhaustive) {
+          tryAdding(Perplexity(uncertainties.to(Set)), Nil, initialReasonerState)
+        } else {
+          tryAdding(next, remaining, initialReasonerState)
+        }
+        result match {
           case None            => ZIO.fail(BoomErrorMessage("The first uncertainty has no proposals which are compatible with the initial reasoner state."))
           case Some(selection) => resolveRemaining(selection :: Nil)
         }
@@ -145,21 +159,72 @@ object Boom {
           SelectedProposal(proposal, ag, remaining, newState, reasonerState)
         }
       case perplexity: Perplexity =>
-        val maybeAdded = perplexity.sorted
-          .to(LazyList)
-          .map { proposal =>
-            val newReasonerState = Reasoner.assert(proposal.axioms, reasonerState)
-            proposal -> newReasonerState
-          }
-          .find { case (_, state) => isValid(state) }
-        maybeAdded.map { case (proposal, newState) =>
-          SelectedPerplexityProposal(proposal, perplexity, remaining, newState, reasonerState)
+        resolvePerplexity(perplexity, reasonerState) match {
+          case Right(Resolved(proposals, newState)) =>
+            val selected = PerplexityProposal(proposals.map(res => res.uncertainty -> res.proposal).to(Map))
+            Some(SelectedPerplexityProposal(selected, perplexity, remaining, newState, reasonerState))
+          case Left(error) =>
+            scribe.error(error.message)
+            None //FIXME use error
         }
     }
 
+  sealed private trait DwindleStatus
+
+  final private case class Open(dus: List[DwindlingUncertainty]) extends DwindleStatus
+
+  final private case class Resolved(proposals: List[Resolution], reasonerState: ReasonerState) extends DwindleStatus
+
+  private object Closed extends DwindleStatus
+
+  private def resolvePerplexity(perplexity: Perplexity, reasonerState: ReasonerState): Either[BoomError, Resolved] = {
+    val uncertainties = perplexity.uncertainties.to(List).sortBy(_.mostProbable.probability)(Ordering[Double].reverse)
+    uncertainties match {
+      case first :: rest =>
+        val dus = first.proposals.to(List).map(p => DwindlingUncertainty(first, p, Nil, reasonerState, rest))
+        val queue = PriorityQueue(dus: _*)
+        processQueue(queue) match {
+          case Closed        => Left(BoomErrorMessage("No possible resolution of perplexity"))
+          case res: Resolved => Right(res)
+          case _: Open       => Left(BoomErrorMessage("Perplexity resolution terminated with unresolved uncertainty"))
+        }
+      case Nil => Left(BoomErrorMessage("A perplexity was created without any uncertainties"))
+    }
+  }
+
+  @tailrec
+  private def processQueue(queue: PriorityQueue[DwindlingUncertainty]): DwindleStatus =
+    queue.dequeueOption match {
+      case Some((next, remaining)) =>
+        dwindle(next) match {
+          case Open(dus)     => processQueue(remaining.enqueue(dus))
+          case Closed        => processQueue(remaining)
+          case res: Resolved => res
+        }
+      case None => Closed
+    }
+
+  private def dwindle(du: DwindlingUncertainty): DwindleStatus = {
+    val newReasonerState = Reasoner.assert(du.proposal.axioms, du.previousReasonerState)
+    if (isValid(newReasonerState)) {
+      val newSelected = Resolution(du.uncertainty, du.proposal) :: du.selected
+      du.remaining match {
+        case next :: rest =>
+          val dus = next.proposals.to(List).map(p => DwindlingUncertainty(next, p, newSelected, newReasonerState, rest))
+          Open(dus)
+        case Nil => Resolved(newSelected, newReasonerState)
+      }
+    } else {
+//      val one: BigInt = 1
+//      val eliminated = du.remaining.map(_.proposals.size).foldLeft(one)(_ * _)
+//      scribe.info(s"Eliminated choices: $eliminated")
+      Closed
+    }
+  }
+
   private def jointProbability(selections: List[SelectedProposal]): Double = selections.map(s => Math.log(s.selected.probability)).sum
 
-  private def jointProbability(result: ResolvedUncertainties): Double =
+  def jointProbability(result: ResolvedUncertainties): Double =
     result.map { case (_, (proposal, _)) => Math.log(proposal.probability) }.sum
 
   private def isValid(state: ReasonerState): Boolean = !isIncoherent(state) && !hasNamespaceViolations(state)
