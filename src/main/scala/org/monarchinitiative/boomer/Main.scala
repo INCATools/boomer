@@ -35,7 +35,8 @@ final case class Options(
   @ExtraName("r")
   runs: Int,
   exhaustiveSearchLimit: Int = 20,
-  outputInternalAxioms: Boolean = false
+  outputInternalAxioms: Boolean = false,
+  restrictOutputToPrefixes: List[String] = Nil
 )
 
 object Main extends ZCaseApp[Options] {
@@ -50,8 +51,7 @@ object Main extends ZCaseApp[Options] {
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       assertions = Bridge.ontologyToAxioms(ont)
       prohibitedPrefixEquivalences = prefixes.values.to(Set)
-      whelkTask = ZIO.effectTotal(
-        Reasoner.assert(assertions, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil))))
+      whelkTask = ZIO.effectTotal(Reasoner.assert(assertions, Map.empty, false))
       equivCliquesTask = ZIO.effectTotal(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
       (equivCliques, whelk) <- ZIO.tupledPar(equivCliquesTask, whelkTask)
       _ <- putStrLn(s"Num equiv cliques: ${equivCliques.values.toSet.size}")
@@ -63,10 +63,10 @@ object Main extends ZCaseApp[Options] {
       runs = grouped.values.to(List)
       (doExhaustive, doShuffled) = runs.partition(_.size <= options.exhaustiveSearchLimit)
       exhaustiveResolvedCliques <- ZIO.foreachPar(doExhaustive) { runMappings =>
-        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prefixes.values.to(Set), whelk, options.windowCount, 1, true)
+        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prohibitedPrefixEquivalences, whelk, options.windowCount, 1, true)
       }
       shuffledResolvedCliques <- ZIO.foreachPar(doShuffled) { runMappings =>
-        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prefixes.values.to(Set), whelk, options.windowCount, options.runs, false)
+        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prohibitedPrefixEquivalences, whelk, options.windowCount, options.runs, false)
       }
       bestResolutionsForShuffledCliques = shuffledResolvedCliques.map(_.maxBy(Boom.jointProbability))
       exhaustiveResultsByClique = exhaustiveResolvedCliques.map(_.head)
@@ -78,7 +78,8 @@ object Main extends ZCaseApp[Options] {
         .values
         .fold(Map.empty)(_ ++ _)
       consolidatedResultsByClique = resultsByClique.filterNot { case (_, v) => v.size == 1 } + (Set.empty[AtomicConcept] -> singletons)
-      _ <- ZIO.foreach_(consolidatedResultsByClique) { case (clique, resolved) => writeCliqueOutput(clique, resolved, options.output) }
+      filteredResultsByClique = filterCliques(consolidatedResultsByClique, options, prefixes)
+      _ <- ZIO.foreach_(filteredResultsByClique) { case (clique, resolved) => writeCliqueOutput(clique, resolved, options.output) }
       resolvedAsOne = (exhaustiveResolvedCliques.flatten ::: bestResolutionsForShuffledCliques).fold(ResolvedUncertainties.empty)((a, b) => a ++ b)
       _ <- ZIO.effect(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
       _ <- ZIO.effect(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
@@ -100,6 +101,31 @@ object Main extends ZCaseApp[Options] {
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
 
   }
+
+  def filterCliques(cliques: Map[Set[AtomicConcept], ResolvedUncertainties],
+                    options: Options,
+                    prefixes: Map[String, String]): Map[Set[AtomicConcept], ResolvedUncertainties] =
+    options.restrictOutputToPrefixes match {
+      case prefix1 :: prefix2 :: Nil =>
+        (for {
+          namespace1 <- prefixes.get(prefix1)
+          namespace2 <- prefixes.get(prefix2)
+        } yield cliques
+          .filter { case (terms, resolved) =>
+            terms.exists(_.id.startsWith(namespace1)) &&
+              terms.exists(_.id.startsWith(namespace2)) &&
+              resolved.exists { case (uncertainty, (proposal, preferred)) =>
+                proposal.axioms.exists(_.signature.exists(_.asInstanceOf[AtomicConcept].id.startsWith(namespace1))) &&
+                  proposal.axioms.exists(_.signature.exists(_.asInstanceOf[AtomicConcept].id.startsWith(namespace2))) &&
+                  !preferred
+              }
+          })
+          .getOrElse(cliques)
+      case Nil => cliques
+      case _ =>
+        scribe.warn("Ignoring more than two prefixes in output filter")
+        cliques
+    }
 
   def writeCliqueOutput(clique: Set[AtomicConcept], selections: ResolvedUncertainties, dirName: String): RIO[Blocking, Unit] = {
     val cliqueName = if (clique.isEmpty) "SINGLETONS" else clique.to(List).map(_.id).sorted.mkString(" ")

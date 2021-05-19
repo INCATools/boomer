@@ -39,9 +39,11 @@ object Boom {
     }
     val maxProbability = uncertainties.toList.map(ah => Math.log(ah.mostProbable.probability)).sum
     scribe.info(s"Max possible joint probability: $maxProbability")
+    val reasonerWithNamespaceChecker = initialReasonerState.copy(queueDelegates =
+      initialReasonerState.queueDelegates + (NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
     val oneEvaluation = for {
       orderedUncertainties <- shuffleWithinWindows(binnedUncertainties)
-      selections <- evaluateInOrder(initialReasonerState, orderedUncertainties, prohibitedPrefixEquivalences, exhaustive)
+      selections <- evaluateInOrder(reasonerWithNamespaceChecker, orderedUncertainties, prohibitedPrefixEquivalences, exhaustive)
     } yield selections.flatMap(collectChoices).toMap
     ZIO.collectAllPar(List.fill(runs)(oneEvaluation))
   }
@@ -53,21 +55,13 @@ object Boom {
                       uncertainties: List[Uncertainty],
                       prohibitedPrefixEquivalences: Set[String],
                       exhaustive: Boolean): IO[BoomError, List[Selection]] =
-    if (isValid(initialState))
+    if (!isIncoherent(initialState))
       resolve(uncertainties, initialState, exhaustive).map { selected =>
         val jointProbability = selected.map(s => Math.log(s.probability)).sum
         scribe.info(s"Found joint probability: $jointProbability")
         selected
       }
-    else if (isIncoherent(initialState)) ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
-    else {
-      val violations = getNamespaceViolations(initialState)
-        .map { case (AtomicConcept(left), AtomicConcept(right)) =>
-          s"$left EquivalentTo $right"
-        }
-        .mkString("\n")
-      ZIO.fail(BoomErrorMessage(s"Given ontology has equivalents within namespace:\n$violations"))
-    }
+    else ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
 
   def organizeResults(results: List[ResolvedUncertainties]): (ResolvedUncertainties, Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
     val mostProbableResult = results.maxBy(jointProbability)
