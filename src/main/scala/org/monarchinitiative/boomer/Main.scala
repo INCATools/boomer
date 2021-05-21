@@ -4,20 +4,20 @@ import java.io.{File, FileOutputStream, FileReader, PrintWriter}
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-
 import caseapp._
 import io.circe.yaml.parser
-import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner}
+import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage, ResolvedUncertainties}
 import org.monarchinitiative.boomer.Model.Proposal
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
-import org.semanticweb.owlapi.model.{IRI, OWLAxiom}
+import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAxiom, OWLClassAxiom, OWLOntology}
 import scribe.Level
 import zio.ZIO.ZIOAutoCloseableOps
 import zio._
 import zio.blocking._
 import zio.console._
+import org.phenoscape.scowl._
 
 import scala.jdk.CollectionConverters._
 
@@ -49,6 +49,7 @@ object Main extends ZCaseApp[Options] {
         BoomErrorMessage("No namespace should be a lexical substring of another; this will interfere with equivalence constraints."))
       mappings <- Mapping.readPTable(new File(options.ptable), prefixes)
       ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
+      labelIndex = indexLabels(ont)
       assertions = Bridge.ontologyToAxioms(ont)
       prohibitedPrefixEquivalences = prefixes.values.to(Set)
       whelkTask = ZIO.effectTotal(Reasoner.assert(assertions, Map.empty, false))
@@ -79,7 +80,11 @@ object Main extends ZCaseApp[Options] {
         .fold(Map.empty)(_ ++ _)
       consolidatedResultsByClique = resultsByClique.filterNot { case (_, v) => v.size == 1 } + (Set.empty[AtomicConcept] -> singletons)
       filteredResultsByClique = filterCliques(consolidatedResultsByClique, options, prefixes)
-      _ <- ZIO.foreach_(filteredResultsByClique) { case (clique, resolved) => writeCliqueOutput(clique, resolved, options.output) }
+      _ <- writeFilteredResultsToMarkdown(filteredResultsByClique, labelIndex, prefixes, options.output)
+      _ <- ZIO.effect(new File(options.output).mkdirs())
+      _ <- ZIO.foreach_(filteredResultsByClique) { case (clique, resolved) =>
+        OntUtil.writeAsOBOJSON(resolvedUncertaintiesAsOntology(resolved, whelk, labelIndex), s"${options.output}/${cliqueID(clique)}.json")
+      }
       resolvedAsOne = (exhaustiveResolvedCliques.flatten ::: bestResolutionsForShuffledCliques).fold(ResolvedUncertainties.empty)((a, b) => a ++ b)
       _ <- ZIO.effect(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
       _ <- ZIO.effect(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
@@ -163,21 +168,74 @@ object Main extends ZCaseApp[Options] {
       if ns1.contains(ns2)
     } yield (ns1, ns2)).isEmpty
 
-//  private def writeHotSpots(hotspots: Map[Option[Set[AtomicConcept]], Map[Model.Uncertainty, Map[(Model.Proposal, Boolean), Int]]],
-//                            outputName: String): ZIO[Blocking, Throwable, Unit] =
-//    ZIO.effect(new PrintWriter(new File(s"$outputName-hotspots.txt"), "utf-8")).bracketAuto { writer =>
-//      ZIO.foreach_(hotspots) { case (grouping, uncertaintyAndProposals) =>
-//        val groupLabel = grouping.getOrElse(Set.empty).map(_.id).toSeq.sorted.mkString(" ")
-//        effectBlocking(writer.println(s"Group: $groupLabel")) *>
-//          ZIO.foreach_(uncertaintyAndProposals) { case (uncertainty, proposals) =>
-//            ZIO.foreach_(proposals) { case ((proposal, isBest), count) =>
-//              effectBlocking(writer.println(s"${proposal.label}\t[$count]"))
-//            } *> effectBlocking(writer.println())
-//          } *> effectBlocking(writer.println())
-//      }
-//    }
-
   private def groupByClique(mappings: Set[Mapping], cliques: Map[AtomicConcept, Set[AtomicConcept]]): Map[Set[AtomicConcept], Set[Mapping]] =
     mappings.groupBy(mapping => cliques.getOrElse(mapping.left, Set(mapping.left)))
+
+  private def indexLabels(ontology: OWLOntology): Map[String, String] =
+    (for {
+      AnnotationAssertion(_, RDFSLabel, term: IRI, value ^^ _) <- ontology.getAxioms(AxiomType.ANNOTATION_ASSERTION).asScala
+    } yield term.toString -> value).to(Map)
+
+  def writeFilteredResultsToMarkdown(filteredResultsByClique: Map[Set[AtomicConcept], ResolvedUncertainties],
+                                     labelIndex: Map[String, String],
+                                     prefixes: Map[String, String],
+                                     filename: String): ZIO[Blocking, Throwable, Unit] =
+    ZIO.effect(new PrintWriter(new File(s"$filename.md"), "utf-8")).bracketAuto { writer =>
+      ZIO.foreach_(filteredResultsByClique) { case (cliqueSet, selections) =>
+        val cliqueName =
+          if (cliqueSet.isEmpty) "SINGLETONS"
+          else
+            cliqueSet
+              .to(List)
+              .map(_.id)
+              .map(id => id -> labelIndex.getOrElse(id, OntUtil.compactIRI(id, prefixes)))
+              .map { case (id, label) =>
+                s"[$label]($id)"
+              }
+              .sorted
+              .mkString(" ")
+        effectBlocking(writer.println(s"## $cliqueName\n")) *>
+          ZIO.foreach_(selections) { case (unc, (selection, best)) =>
+            val isBestText = if (best) "(most probable)" else ""
+            selection.label match {
+              case mapping: MappingRelation =>
+                val leftTerm = s"[${labelIndex.getOrElse(mapping.left.id, OntUtil.compactIRI(mapping.left.id, prefixes))}](${mapping.left.id})"
+                val rightTerm = s"[${labelIndex.getOrElse(mapping.right.id, OntUtil.compactIRI(mapping.right.id, prefixes))}](${mapping.right.id})"
+                effectBlocking(writer.write(s"- $leftTerm ${mapping.label} $rightTerm\t$isBestText\t${selection.probability}\n"))
+              case _ => ZIO.fail(BoomErrorMessage("Unexpectedly a mapping selection doesn't have a MappingRelation object"))
+            }
+          } *>
+          effectBlocking(writer.println())
+      }
+    }
+
+  private val VizWidth = AnnotationProperty("https://w3id.org/kgviz/width")
+
+  def resolvedUncertaintiesAsOntology(resolved: ResolvedUncertainties, asserted: ReasonerState, labelIndex: Map[String, String]): OWLOntology = {
+    val allProposalsAxioms = resolved.values.to(Set).flatMap { case (proposal, _) =>
+      val subClassAxioms = proposal.axioms.flatMap(OntUtil.whelkToOWL(_, true))
+      val axioms = OntUtil.collapseEquivalents(subClassAxioms)
+      axioms.map(ax => ax.getAnnotatedAxiom(Set(Annotation(VizWidth, proposal.probability * 10)).asJava))
+    }
+    val concepts = allProposalsAxioms.flatMap(_.getClassesInSignature.asScala).map(c => AtomicConcept(c.getIRI.toString))
+    val givenAxioms = for {
+      concept1 <- concepts
+      concept2 <- concepts
+      if concept1 != concept2
+      axiom <-
+        if (asserted.closureSubsBySubclass.getOrElse(concept1, Set.empty)(concept2)) {
+          if (asserted.closureSubsBySuperclass.getOrElse(concept1, Set.empty)(concept2))
+            Some(EquivalentClasses(Class(concept1.id), Class(concept2.id)))
+          else Some(SubClassOf(Class(concept1.id), Class(concept2.id)))
+        } else None
+    } yield axiom
+    val allClassAxioms = allProposalsAxioms ++ givenAxioms
+    val labelAxioms = for {
+      cls <- allClassAxioms.flatMap(_.getClassesInSignature.asScala)
+      label <- labelIndex.get(cls.getIRI.toString)
+    } yield AnnotationAssertion(RDFSLabel, cls, label)
+    val allAxioms = allClassAxioms ++ labelAxioms
+    OWLManager.createOWLOntologyManager().createOntology(allAxioms.asJava)
+  }
 
 }

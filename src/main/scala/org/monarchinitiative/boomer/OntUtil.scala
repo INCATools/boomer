@@ -16,6 +16,11 @@ import org.semanticweb.owlapi.model.parameters.Imports
 import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
 import zio.blocking._
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.geneontology.obographs.model.GraphDocument
+import org.geneontology.obographs.owlapi.FromOwl
+import java.io.FileOutputStream
 
 import scala.jdk.CollectionConverters._
 
@@ -143,5 +148,24 @@ object OntUtil {
       }
     } else Some(curie)
   }
+
+  def compactIRI(iri: String, prefixes: Map[String, String]): String =
+    prefixes
+      .collectFirst {
+        case (prefix, expansion) if iri.startsWith(expansion) =>
+          iri.replace(expansion, s"$prefix:")
+      }
+      .getOrElse(iri)
+
+  def writeAsOBOJSON(ontology: OWLOntology, filename: String): ZIO[Blocking, Throwable, Unit] =
+    for {
+      gd <- ZIO.effect(new FromOwl().generateGraphDocument(ontology))
+      mapper = new ObjectMapper()
+      _ = mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
+      writer = mapper.writerWithDefaultPrettyPrinter
+      _ <- ZIO.effect(new FileOutputStream(new File(filename))).bracketAuto { ontStream =>
+        effectBlocking(writer.writeValue(ontStream, gd))
+      }
+    } yield ()
 
 }
