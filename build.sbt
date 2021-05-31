@@ -28,7 +28,7 @@ libraryDependencies ++= {
     "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.19",
     "commons-codec"               % "commons-codec"       % "1.15",
     "com.outr"                   %% "scribe-slf4j"        % "3.5.4",
-    "io.circe"                   %% "circe-yaml"          % "0.13.1",
+    "io.circe"                   %% "circe-yaml"          % "0.14.0",
     "com.github.alexarchambault" %% "case-app"            % "2.0.6",
     "org.scalaz"                 %% "scalaz-core"         % "7.3.3",
     "dev.zio"                    %% "zio-test"            % zioVersion % Test,
