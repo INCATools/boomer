@@ -29,6 +29,8 @@ libraryDependencies ++= {
     "org.geneontology"            % "obographs"           % "0.2.1",
     "commons-codec"               % "commons-codec"       % "1.15",
     "com.outr"                   %% "scribe-slf4j"        % "3.5.4",
+    "io.circe"                   %% "circe-core"          % "0.13.0",
+    "io.circe"                   %% "circe-generic"       % "0.13.0",
     "io.circe"                   %% "circe-yaml"          % "0.13.1",
     "com.github.alexarchambault" %% "case-app"            % "2.0.6",
     "org.scalaz"                 %% "scalaz-core"         % "7.3.3",

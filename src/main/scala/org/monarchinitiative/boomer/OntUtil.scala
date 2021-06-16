@@ -1,8 +1,7 @@
 package org.monarchinitiative.boomer
 
-import java.io.File
+import java.io.{File, FileOutputStream, IOException, PrintWriter}
 import java.util.UUID
-
 import org.apache.commons.codec.digest.DigestUtils
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS
 import org.geneontology.whelk.BuiltIn.Bottom
@@ -20,7 +19,9 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.geneontology.obographs.model.GraphDocument
 import org.geneontology.obographs.owlapi.FromOwl
-import java.io.FileOutputStream
+import io.circe._
+import io.circe.generic.auto._
+import io.circe.syntax._
 
 import scala.jdk.CollectionConverters._
 
@@ -157,7 +158,7 @@ object OntUtil {
       }
       .getOrElse(iri)
 
-  def writeAsOBOJSON(ontology: OWLOntology, filename: String): ZIO[Blocking, Throwable, Unit] =
+  def writeAsOBOJSONold(ontology: OWLOntology, filename: String): ZIO[Blocking, Throwable, Unit] =
     for {
       gd <- ZIO.effect(new FromOwl().generateGraphDocument(ontology))
       mapper = new ObjectMapper()
@@ -167,5 +168,60 @@ object OntUtil {
         effectBlocking(writer.writeValue(ontStream, gd))
       }
     } yield ()
+
+  def writeAsOBOJSON(ontology: OWLOntology,
+                     labelIndex: Map[String, String],
+                     prefixes: Map[String, String],
+                     filename: String): ZIO[Blocking, Throwable, Unit] = {
+    val obograph = asOBOGraphs(ontology, labelIndex, prefixes)
+    ZIO.effect(new PrintWriter(new File(filename), "utf-8")).bracketAuto { writer =>
+      effectBlockingIO(writer.write(obograph.asJson.deepDropNullValues.toString))
+    }
+  }
+
+  def asOBOGraphs(ontology: OWLOntology, labelIndex: Map[String, String], prefixes: Map[String, String]): OBOGraphs = {
+    val axioms = ontology.getAxioms().asScala
+    val (allNodes, allEdges) = axioms.foldLeft((Set.empty[Node], Set.empty[Edge])) { case ((nodes, edges), axiom) =>
+      axiom match {
+        case SubClassOf(anns, Class(sub), Class(sup)) =>
+          val subNode = Node(ID(compactIRI(sub.toString, prefixes)), "CLASS", labelIndex.get(sub.toString))
+          val superNode = Node(ID(compactIRI(sup.toString, prefixes)), "CLASS", labelIndex.get(sup.toString))
+          val meta = Meta(anns.map(asPropertyValue).to(List))
+          val edge = Edge(ID(compactIRI(sub.toString, prefixes)), ID("is_a"), ID(compactIRI(sup.toString, prefixes)), meta)
+          (nodes + subNode + superNode) -> (edges + edge)
+        case EquivalentClasses(anns, classes) =>
+          classes.to(List).collect { case c: OWLClass => c }.grouped(2).foldLeft((nodes, edges)) { case ((nodesWithEquiv, edgesWithEquiv), pair) =>
+            if (pair.size == 2) {
+              val sub = pair(0).getIRI.toString
+              val sup = pair(1).getIRI.toString
+              val subNode = Node(ID(compactIRI(sub, prefixes)), "CLASS", labelIndex.get(sub))
+              val superNode = Node(ID(compactIRI(sup, prefixes)), "CLASS", labelIndex.get(sup))
+              val meta = Meta(anns.map(asPropertyValue).to(List))
+              val edge = Edge(ID(compactIRI(sub, prefixes)), ID("owl:equivalentClass"), ID(compactIRI(sup, prefixes)), meta)
+              (nodesWithEquiv + subNode + superNode) -> (edgesWithEquiv + edge)
+            } else (nodesWithEquiv, edgesWithEquiv)
+          }
+        case _ => (nodes, edges)
+      }
+    }
+    val equivalenceSets = axioms.collect { case e: OWLEquivalentClassesAxiom => e }.foldLeft(Set.empty[Set[ID]]) { case (idSets, next) =>
+      val classes = next.getNamedClasses.asScala.to(Set).map(_.getIRI.toString).map(iri => ID(compactIRI(iri, prefixes)))
+      idSets.find(_.intersect(classes).nonEmpty) match {
+        case Some(idSet) => (idSets - idSet) + (idSet ++ classes)
+        case None        => idSets + classes
+      }
+    }
+    OBOGraphs(
+      OBOGraph(
+        ID(Option(ontology.getOntologyID.getOntologyIRI.orNull()).map(_.toString).getOrElse("http://example.org/anonymous")),
+        allNodes.to(List),
+        allEdges.to(List),
+        equivalenceSets.map(ids => NodeSet(ids.to(List))).to(List)
+      ) :: Nil
+    )
+  }
+
+  def asPropertyValue(annotation: OWLAnnotation): PropertyValue =
+    PropertyValue(ID(annotation.getProperty.getIRI.toString), annotation.getValue)
 
 }

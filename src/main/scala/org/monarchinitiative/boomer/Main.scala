@@ -83,7 +83,11 @@ object Main extends ZCaseApp[Options] {
       _ <- writeFilteredResultsToMarkdown(filteredResultsByClique, labelIndex, prefixes, options.output)
       _ <- ZIO.effect(new File(options.output).mkdirs())
       _ <- ZIO.foreach_(filteredResultsByClique) { case (clique, resolved) =>
-        OntUtil.writeAsOBOJSON(resolvedUncertaintiesAsOntology(resolved, whelk, labelIndex), s"${options.output}/${cliqueID(clique)}.json")
+        val cliqueName = cliqueID(clique)
+        OntUtil.writeAsOBOJSON(resolvedUncertaintiesAsOntology(resolved, whelk, labelIndex, cliqueName),
+                               labelIndex,
+                               prefixes,
+                               s"${options.output}/$cliqueName.json")
       }
       resolvedAsOne = (exhaustiveResolvedCliques.flatten ::: bestResolutionsForShuffledCliques).fold(ResolvedUncertainties.empty)((a, b) => a ++ b)
       _ <- ZIO.effect(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
@@ -171,6 +175,8 @@ object Main extends ZCaseApp[Options] {
   private def groupByClique(mappings: Set[Mapping], cliques: Map[AtomicConcept, Set[AtomicConcept]]): Map[Set[AtomicConcept], Set[Mapping]] =
     mappings.groupBy(mapping => cliques.getOrElse(mapping.left, Set(mapping.left)))
 
+  /** Map of IRI strings to label strings
+    */
   private def indexLabels(ontology: OWLOntology): Map[String, String] =
     (for {
       AnnotationAssertion(_, RDFSLabel, term: IRI, value ^^ _) <- ontology.getAxioms(AxiomType.ANNOTATION_ASSERTION).asScala
@@ -209,9 +215,12 @@ object Main extends ZCaseApp[Options] {
       }
     }
 
-  private val VizWidth = AnnotationProperty("https://w3id.org/kgviz/width")
+  private val VizWidth = AnnotationProperty("https://w3id.org/kgviz/penwidth")
 
-  def resolvedUncertaintiesAsOntology(resolved: ResolvedUncertainties, asserted: ReasonerState, labelIndex: Map[String, String]): OWLOntology = {
+  def resolvedUncertaintiesAsOntology(resolved: ResolvedUncertainties,
+                                      asserted: ReasonerState,
+                                      labelIndex: Map[String, String],
+                                      cliqueName: String): OWLOntology = {
     val allProposalsAxioms = resolved.values.to(Set).flatMap { case (proposal, _) =>
       val subClassAxioms = proposal.axioms.flatMap(OntUtil.whelkToOWL(_, true))
       val axioms = OntUtil.collapseEquivalents(subClassAxioms)
@@ -228,14 +237,14 @@ object Main extends ZCaseApp[Options] {
             Some(EquivalentClasses(Class(concept1.id), Class(concept2.id)))
           else Some(SubClassOf(Class(concept1.id), Class(concept2.id)))
         } else None
-    } yield axiom
+    } yield axiom.getAnnotatedAxiom(Set(Annotation(VizWidth, 10.0)).asJava)
     val allClassAxioms = allProposalsAxioms ++ givenAxioms
     val labelAxioms = for {
       cls <- allClassAxioms.flatMap(_.getClassesInSignature.asScala)
       label <- labelIndex.get(cls.getIRI.toString)
     } yield AnnotationAssertion(RDFSLabel, cls, label)
     val allAxioms = allClassAxioms ++ labelAxioms
-    OWLManager.createOWLOntologyManager().createOntology(allAxioms.asJava)
+    OWLManager.createOWLOntologyManager().createOntology(allAxioms.asJava, IRI.create(s"urn:clique:$cliqueName"))
   }
 
 }
