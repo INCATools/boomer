@@ -24,7 +24,7 @@ libraryDependencies ++= {
   Seq(
     "org.geneontology"           %% "whelk-owlapi"        % "1.1",
     "dev.zio"                    %% "zio"                 % zioVersion,
-    "org.phenoscape"             %% "scowl"               % "1.3.4",
+    "org.phenoscape"             %% "scowl"               % "1.4.0",
     "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.19",
     "commons-codec"               % "commons-codec"       % "1.15",
     "com.outr"                   %% "scribe-slf4j"        % "3.5.4",
