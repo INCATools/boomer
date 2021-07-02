@@ -8,8 +8,9 @@ import caseapp.core.{Error, RemainingArgs}
 import zio._
 import zio.console.{putStrLn, Console}
 
-/**
-  * Adapted from caseapp.cats.IOCaseApp
+import java.io.IOException
+
+/** Adapted from caseapp.cats.IOCaseApp
   */
 abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T]) extends App {
 
@@ -23,17 +24,16 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
 
   def run(options: T, remainingArgs: RemainingArgs): ZIO[ZEnv, Nothing, ExitCode]
 
-  private[this] def error(message: Error): ZIO[Console, Nothing, ExitCode] =
+  private[this] def error(message: Error): ZIO[Console, IOException, ExitCode] =
     putStrLn(message.message).as(ExitCode.failure)
 
-  private[this] def helpAsked: ZIO[Console, Nothing, ExitCode] =
+  private[this] def helpAsked: ZIO[Console, IOException, ExitCode] =
     putStrLn(messages.withHelp.help).as(ExitCode.success)
 
-  private[this] def usageAsked: ZIO[Console, Nothing, ExitCode] =
+  private[this] def usageAsked: ZIO[Console, IOException, ExitCode] =
     putStrLn(messages.withHelp.usage).as(ExitCode.success)
 
-  /**
-    * Arguments are expanded then parsed. By default, argument expansion is the identity function.
+  /** Arguments are expanded then parsed. By default, argument expansion is the identity function.
     * Overriding this method allows plugging in an arbitrary argument expansion logic.
     *
     * One such expansion logic involves replacing each argument of the form '@<file>' with the
@@ -46,14 +46,12 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
     * override def expandArgs(args: List[String]): List[String]
     * = PlatformArgsExpander.expand(args)
     * }}}
-    *
     * @param args
     * @return
     */
   private[this] def expandArgs(args: List[String]): List[String] = args
 
-  /**
-    * Whether to stop parsing at the first unrecognized argument.
+  /** Whether to stop parsing at the first unrecognized argument.
     *
     * That is, stop parsing at the first non option (not starting with "-"), or
     * the first unrecognized option. The unparsed arguments are put in the `args`
@@ -65,10 +63,10 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] =
     parser.withHelp.detailedParse(expandArgs(args), stopAtFirstUnrecognized) match {
-      case Left(err)                                        => error(err)
-      case Right((WithHelp(_, true, _), _))                 => helpAsked
-      case Right((WithHelp(true, _, _), _))                 => usageAsked
-      case Right((WithHelp(_, _, Left(err)), _))            => error(err)
+      case Left(err)                                        => error(err).orDie
+      case Right((WithHelp(_, true, _), _))                 => helpAsked.orDie
+      case Right((WithHelp(true, _, _), _))                 => usageAsked.orDie
+      case Right((WithHelp(_, _, Left(err)), _))            => error(err).orDie
       case Right((WithHelp(_, _, Right(t)), remainingArgs)) => run(t, remainingArgs)
     }
 
