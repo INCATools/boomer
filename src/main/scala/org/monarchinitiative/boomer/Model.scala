@@ -19,7 +19,7 @@ object Model {
     * @param axioms      the group of axioms constituting this proposal (restricted to concept inclusions)
     * @param probability the prior probability asserted for the truthfulness of this proposal
     */
-  final case class Proposal(label: String, axioms: Set[ConceptInclusion], probability: Double) extends GeneralizedProposal
+  final case class Proposal(label: AnyRef, axioms: Set[ConceptInclusion], probability: Double) extends GeneralizedProposal
 
   /** A group of hypothetical proposals, either a single set of alternative states (Uncertainty),
     * or a combinatorial set of states representing multiple Uncertainties (Perplexity)

@@ -39,20 +39,16 @@ object Mapping {
         disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
       } yield {
         val equivalenceProposal =
-          Proposal(s"$leftCURIE EquivalentTo $rightCURIE", Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent)
+          Proposal(Equivalent(left, right), Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent)
         Mapping(
           left,
           right,
           Uncertainty(
             Set(
-              Proposal(s"$leftCURIE ProperSubClassOf $rightCURIE",
-                       disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right),
-                       probProperSubLeftRight),
-              Proposal(s"$leftCURIE ProperSuperClassOf $rightCURIE",
-                       disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left),
-                       probProperSubRightLeft),
+              Proposal(ProperSubClassOf(left, right), disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right), probProperSubLeftRight),
+              Proposal(ProperSuperClassOf(left, right), disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left), probProperSubRightLeft),
               equivalenceProposal,
-              Proposal(s"$leftCURIE SiblingOf $rightCURIE", disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
+              Proposal(Siblings(left, right), disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
             ).filter(_.probability > 0.0)
           ),
           equivalenceProposal
@@ -100,3 +96,27 @@ object Mapping {
 }
 
 final case class Mapping(left: AtomicConcept, right: AtomicConcept, uncertainty: Uncertainty, equivalenceProposal: Proposal)
+
+sealed trait MappingRelation {
+
+  def left: AtomicConcept
+  def right: AtomicConcept
+  def label: String
+
+}
+
+final case class ProperSubClassOf(left: AtomicConcept, right: AtomicConcept) extends MappingRelation {
+  def label = "ProperSubClassOf"
+}
+
+final case class ProperSuperClassOf(left: AtomicConcept, right: AtomicConcept) extends MappingRelation {
+  def label = "ProperSuperClassOf"
+}
+
+final case class Equivalent(left: AtomicConcept, right: AtomicConcept) extends MappingRelation {
+  def label = "EquivalentTo"
+}
+
+final case class Siblings(left: AtomicConcept, right: AtomicConcept) extends MappingRelation {
+  def label = "SiblingOf"
+}
