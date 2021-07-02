@@ -107,8 +107,7 @@ object Main extends ZCaseApp[Options] {
       .catchSome { case BoomError(msg) =>
         ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
       }
-      .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).as(ExitCode.failure))
-
+      .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).exitCode.as(ExitCode.failure))
   }
 
   def filterCliques(cliques: Map[Set[AtomicConcept], ResolvedUncertainties],
