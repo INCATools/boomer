@@ -8,8 +8,7 @@ import caseapp.core.{Error, RemainingArgs}
 import zio._
 import zio.console.{putStrLn, Console}
 
-/**
-  * Adapted from caseapp.cats.IOCaseApp
+/** Adapted from caseapp.cats.IOCaseApp
   */
 abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T]) extends App {
 
@@ -32,8 +31,7 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
   private[this] def usageAsked: ZIO[Console, Nothing, ExitCode] =
     putStrLn(messages.withHelp.usage).as(ExitCode.success)
 
-  /**
-    * Arguments are expanded then parsed. By default, argument expansion is the identity function.
+  /** Arguments are expanded then parsed. By default, argument expansion is the identity function.
     * Overriding this method allows plugging in an arbitrary argument expansion logic.
     *
     * One such expansion logic involves replacing each argument of the form '@<file>' with the
@@ -52,8 +50,7 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
     */
   private[this] def expandArgs(args: List[String]): List[String] = args
 
-  /**
-    * Whether to stop parsing at the first unrecognized argument.
+  /** Whether to stop parsing at the first unrecognized argument.
     *
     * That is, stop parsing at the first non option (not starting with "-"), or
     * the first unrecognized option. The unparsed arguments are put in the `args`
