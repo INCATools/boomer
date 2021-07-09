@@ -1,41 +1,67 @@
 package org.monarchinitiative.boomer
 
-import java.io.{File, FileOutputStream, FileReader, PrintWriter}
-import java.math.BigInteger
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import caseapp._
 import io.circe.yaml.parser
 import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage, ResolvedUncertainties}
-import org.monarchinitiative.boomer.Model.Proposal
+import org.phenoscape.scowl._
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
-import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAxiom, OWLClassAxiom, OWLOntology}
+import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAxiom, OWLOntology}
 import scribe.Level
 import zio.ZIO.ZIOAutoCloseableOps
 import zio._
 import zio.blocking._
 import zio.console._
-import org.phenoscape.scowl._
 
+import java.io.{File, FileOutputStream, FileReader, PrintWriter}
+import java.math.BigInteger
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import scala.jdk.CollectionConverters._
 
+@AppName("boomer")
+@ProgName("boomer")
 final case class Options(
+  @HelpMessage("Name used for folder to ouput clique JSON files; also basename for ontology and Markdown output files.")
+  @ValueDescription("output files/dir name")
   @ExtraName("o")
   output: String = "output",
+  @HelpMessage("TSV file containing table of mappings with probabilities.")
+  @ValueDescription("filename")
   @ExtraName("t")
   ptable: String,
+  @HelpMessage("OWL file containing all asserted/background axioms.")
+  @ValueDescription("filename")
   @ExtraName("a")
   ontology: String,
+  @HelpMessage(
+    "YAML dictionary of prefix-to-expansion mappings for all prefixes used in the ptable. These namespaces are also used to check for new within-namespace equivalences.")
+  @ValueDescription("filename")
   @ExtraName("p")
   prefixes: String,
+  @HelpMessage(
+    "Number of groups to split a clique of mappings into when shuffling between greedy search runs. Windows maintain their order; mappings within a window are shuffled.")
+  @ValueDescription("positive integer")
   @ExtraName("w")
   windowCount: Int,
+  @HelpMessage("Number of separate shuffled runs to conduct for each greedy search.")
+  @ValueDescription("positive integer")
   @ExtraName("r")
   runs: Int,
+  @HelpMessage("Maximum size clique for exhaustive search algorithm. Larger cliques use greedy search.")
+  @ValueDescription("positive integer")
+  @ExtraName("e")
   exhaustiveSearchLimit: Int = 20,
+  @HelpMessage(
+    "Include axioms used to enforce proper subclass relationships (e.g. generated disjoint sibling classes) in OWL output (default false).")
+  @ValueDescription("bool")
+  @ExtraName("e")
   outputInternalAxioms: Boolean = false,
+  @HelpMessage(
+    "Generate output only for cliques where a mapping between these two namespaces was resolved as something other than its highest probability option.")
+  @ValueDescription("prefix strings (max of 2)")
+  @ExtraName("e")
   restrictOutputToPrefixes: List[String] = Nil
 )
 
@@ -236,7 +262,7 @@ object Main extends ZCaseApp[Options] {
             Some(EquivalentClasses(Class(concept1.id), Class(concept2.id)))
           else Some(SubClassOf(Class(concept1.id), Class(concept2.id)))
         } else None
-    } yield axiom.getAnnotatedAxiom(Set(Annotation(VizWidth, 10.0)).asJava)
+    } yield axiom
     val allClassAxioms = allProposalsAxioms ++ givenAxioms
     val labelAxioms = for {
       cls <- allClassAxioms.flatMap(_.getClassesInSignature.asScala)
