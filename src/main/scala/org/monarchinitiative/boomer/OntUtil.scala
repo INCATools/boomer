@@ -1,9 +1,12 @@
 package org.monarchinitiative.boomer
 
-import java.io.{File, FileOutputStream, IOException, PrintWriter}
-import java.util.UUID
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.circe.generic.auto._
+import io.circe.syntax._
 import org.apache.commons.codec.digest.DigestUtils
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS
+import org.geneontology.obographs.owlapi.FromOwl
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{Individual => _, _}
 import org.monarchinitiative.boomer.Boom.BoomErrorMessage
@@ -15,14 +18,9 @@ import org.semanticweb.owlapi.model.parameters.Imports
 import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
 import zio.blocking._
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.databind.ObjectMapper
-import org.geneontology.obographs.model.GraphDocument
-import org.geneontology.obographs.owlapi.FromOwl
-import io.circe._
-import io.circe.generic.auto._
-import io.circe.syntax._
 
+import java.io.{File, FileOutputStream, PrintWriter}
+import java.util.UUID
 import scala.jdk.CollectionConverters._
 
 object OntUtil {
@@ -186,8 +184,9 @@ object OntUtil {
         case SubClassOf(anns, Class(sub), Class(sup)) =>
           val subNode = Node(ID(compactIRI(sub.toString, prefixes)), "CLASS", labelIndex.get(sub.toString))
           val superNode = Node(ID(compactIRI(sup.toString, prefixes)), "CLASS", labelIndex.get(sup.toString))
+          val edgeType = if (anns.nonEmpty) "is_a" else "asserted_is_a"
           val meta = Meta(anns.map(asPropertyValue).to(List))
-          val edge = Edge(ID(compactIRI(sub.toString, prefixes)), ID("is_a"), ID(compactIRI(sup.toString, prefixes)), meta)
+          val edge = Edge(ID(compactIRI(sub.toString, prefixes)), ID(edgeType), ID(compactIRI(sup.toString, prefixes)), meta)
           (nodes + subNode + superNode) -> (edges + edge)
         case EquivalentClasses(anns, classes) =>
           classes.to(List).collect { case c: OWLClass => c }.grouped(2).foldLeft((nodes, edges)) { case ((nodesWithEquiv, edgesWithEquiv), pair) =>
@@ -196,8 +195,9 @@ object OntUtil {
               val sup = pair(1).getIRI.toString
               val subNode = Node(ID(compactIRI(sub, prefixes)), "CLASS", labelIndex.get(sub))
               val superNode = Node(ID(compactIRI(sup, prefixes)), "CLASS", labelIndex.get(sup))
+              val edgeType = if (anns.nonEmpty) "owl:equivalentClass" else "asserted_equivalent_class"
               val meta = Meta(anns.map(asPropertyValue).to(List))
-              val edge = Edge(ID(compactIRI(sub, prefixes)), ID("owl:equivalentClass"), ID(compactIRI(sup, prefixes)), meta)
+              val edge = Edge(ID(compactIRI(sub, prefixes)), ID(edgeType), ID(compactIRI(sup, prefixes)), meta)
               (nodesWithEquiv + subNode + superNode) -> (edgesWithEquiv + edge)
             } else (nodesWithEquiv, edgesWithEquiv)
           }
