@@ -3,6 +3,34 @@
 # boomer
 Bayesian OWL ontology merging
 
+## Usage
+
+```
+Usage: boomer [options]
+  --usage  <bool>
+        Print usage and exit
+  --help | -h  <bool>
+        Print help message and exit
+  --output | -o  <output files/dir name>
+        Name used for folder to ouput clique JSON files; also basename for ontology and Markdown output files.
+  --ptable | -t  <filename>
+        TSV file containing table of mappings with probabilities.
+  --ontology | -a  <filename>
+        OWL file containing all asserted/background axioms.
+  --prefixes | -p  <filename>
+        YAML dictionary of prefix-to-expansion mappings for all prefixes used in the ptable. These namespaces are also used to check for new within-namespace equivalences.
+  --window-count | -w  <positive integer>
+        Number of groups to split a clique of mappings into when shuffling between greedy search runs. Windows maintain their order; mappings within a window are shuffled.
+  --runs | -r  <positive integer>
+        Number of separate shuffled runs to conduct for each greedy search.
+  --exhaustive-search-limit | -e  <positive integer>
+        Maximum size clique for exhaustive search algorithm. Larger cliques use greedy search.
+  --output-internal-axioms | -e  <bool>
+        Include axioms used to enforce proper subclass relationships (e.g. generated disjoint sibling classes) in OWL output (default false).
+  --restrict-output-to-prefixes | -e  <prefix strings (max of 2)>
+        Generate output only for cliques where a mapping between these two namespaces was resolved as something other than its highest probability option.
+```
+
 ## Running
 
 `boomer` doesn't have releases or much of a command-line interface at the moment. Currently there is a `Main` class specialized for the term mapping use case. First, clone the repository and build the command-line package:
