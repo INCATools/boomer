@@ -33,46 +33,28 @@ Usage: boomer [options]
 
 ## Running
 
-`boomer` doesn't have releases or much of a command-line interface at the moment. Currently there is a `Main` class specialized for the term mapping use case. First, clone the repository and build the command-line package:
+A pre-built copy of Boomer can downloaded from the [releases page](https://github.com/INCATools/boomer/releases), e.g., `https://github.com/INCATools/boomer/releases/download/v0.1/boomer-0.1.tgz`. After unzipping the archive you should see a `bin` and a `lib` folder. Keep these together in the same folder, and add the `bin` folder to your path.
 
-```bash
-sbt stage
-```
-This will create the executable `./target/universal/stage/bin/boomer`.
+The current command-line interface is specialized for the term mapping use case (see options above).
 
-To set the JVM heap size, use an environment variable:
+To set the JVM heap size (usually necessary for processing larger files), use an environment variable:
 
 ```bash
 export JAVA_OPTS=-Xmx10G
 ```
 
-To run, `boomer` expects 5 arguments:
-- `ptable`: A tsv file containing the probabilities of each IRI/term.
-- `ontology`: Background ontology. 
-- `prefixes`: A YAML file of term namespaces, used for expanding IDs in the probability table, and also for specifying namespaces in which equivalences should be disallowed.
-- `window-count`: Number of bins to divide the probability range into. Mappings within each bin will be shuffled on each run.
-- `runs`: Number of searches for coherent axiom configuration to conduct.
-
-Three output files are produced:
-- `output.txt`: List of chosen mapping configurations in the most probable run.
-- `output-hotspots.txt`: List of mappings in which multiple configurations were chosen in different runs.
-- `output.ofn`: OWL ontology containing mapping axioms selected in the most probable run.
-
-## Example
-This command uses the `slim-exposure-probs.tsv` probability file and `slim-exposure-probs.owl` ontology file to produce mappings between classes the `slim-exposure-probs.owl` ontology and other ontology terms specified in the `slim-exposure-probs.tsv` file.  
+## Example command line (from https://github.com/geneontology/go-rhea-boom/blob/master/Makefile)
 
 ```bash
-./target/universal/stage/bin/boomer --ptable slim-exposure-probs.tsv --ontology slim-exposure.owl --window-count 10 --runs 100 --prefixes prefixes.yaml --output exposo
+boomer --ptable probs.tsv --ontology go-rhea.ofn --window-count 1 --runs 100 --prefixes prefixes.yaml --output rhea-boom --exhaustive-search-limit 14 --restrict-output-to-prefixes=GO --restrict-output-to-prefixes=RHEA
 ```
 
-The `output.txt` file looks like this:
+## Building
 
-```
-ECTO:0001606 SiblingOf Wikidata:Q21167711       false
-ECTO:0002110 EquivalentTo Wikidata:Q21173580    true
-ECTO:0001628 SiblingOf NCIT:C45558      false
-ECTO:0001750 EquivalentTo NCIT:C29821   true
-ECTO:0002115 EquivalentTo Wikidata:Q21174350    true
-```
-The `true`/`false` designate whether the highest probability value was used.
+If you want to build the code yourself, you must first install [`sbt`](https://www.scala-sbt.org). Clone the repository and run `sbt` in the project root folder. A few SBT commands will be useful:
+
+- `compile`: build the code
+- `test`: run all tests
+- `stage`: create an executable for local use at `./target/universal/stage/bin/boomer`
+- `packageZipTarball`: package the executable for release
 
