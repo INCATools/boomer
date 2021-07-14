@@ -37,7 +37,7 @@ A pre-built copy of Boomer can downloaded from the [releases page](https://githu
 
 The current command-line interface is specialized for the term mapping use case (see options above).
 
-Boomer requires Java in order to run. To set the JVM heap size (usually necessary for processing larger files), use an environment variable:
+To run Boomer, you must have Java installed. To set the JVM heap size (usually necessary for processing larger files), use an environment variable:
 
 ```bash
 export JAVA_OPTS=-Xmx10G
