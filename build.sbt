@@ -28,7 +28,7 @@ libraryDependencies ++= {
     "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.19",
     "org.geneontology"            % "obographs"           % "0.2.1",
     "commons-codec"               % "commons-codec"       % "1.15",
-    "com.outr"                   %% "scribe-slf4j"        % "3.5.5",
+    "com.outr"                   %% "scribe-slf4j"        % "3.6.3",
     "io.circe"                   %% "circe-core"          % "0.13.0",
     "io.circe"                   %% "circe-generic"       % "0.13.0",
     "io.circe"                   %% "circe-yaml"          % "0.14.0",
