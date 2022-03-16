@@ -1,0 +1,4 @@
+BASE := anat
+include ../Makefile
+
+

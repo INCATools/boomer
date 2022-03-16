@@ -1,0 +1,4 @@
+BASE := sib
+include ../Makefile
+
+
