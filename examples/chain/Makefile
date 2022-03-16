@@ -1,0 +1,4 @@
+BASE := chain
+include ../Makefile
+
+

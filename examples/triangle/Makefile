@@ -1,0 +1,4 @@
+BASE := triangle
+include ../Makefile
+
+
