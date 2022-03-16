@@ -1,0 +1,17 @@
+site_name: "Boomer"
+theme:
+  name: material
+  analytics:
+    gtag: G-2SYBSJVZ23
+  palette:
+    scheme: slate
+    primary: cyan
+plugins:
+  - search
+nav:
+  - Introduction: index.md
+  - Usage: usage.md
+  - Specifying probabilities: specifying-probabilities.md
+  
+site_url: https://incatools.github.io/boomer/
+repo_url: https://github.com/incatools/boomer/
