@@ -8,14 +8,14 @@
       
       
       
-        <link rel="canonical" href="https://incatools.github.io/boomer/usage/">
+        <link rel="canonical" href="https://incatools.github.io/boomer/graphical-output/">
       
       <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.2.3, mkdocs-material-8.2.5">
     
     
       
-        <title>Usage - Boomer</title>
+        <title>Graphical Output - Boomer</title>
       
     
     
@@ -65,7 +65,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#usage" class="md-skip">
+        <a href="#graphical-output" class="md-skip">
           Skip to content
         </a>
       
@@ -98,7 +98,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Usage
+              Graphical Output
             
           </span>
         </div>
@@ -221,62 +221,11 @@
 
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          Usage
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
         Usage
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    Usage
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#running" class="md-nav__link">
-    Running
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#example-command-line-from-httpsgithubcomgeneontologygo-rhea-boomblobmastermakefile" class="md-nav__link">
-    Example command line (from https://github.com/geneontology/go-rhea-boom/blob/master/Makefile)
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -313,6 +262,8 @@
   
   
   
+    
+  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -321,22 +272,8 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    Usage
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#running" class="md-nav__link">
-    Running
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#example-command-line-from-httpsgithubcomgeneontologygo-rhea-boomblobmastermakefile" class="md-nav__link">
-    Example command line (from https://github.com/geneontology/go-rhea-boom/blob/master/Makefile)
+  <a href="#todo-use-obographviz-example-with-install-instructions" class="md-nav__link">
+    TODO - Use obographViz example with install instructions
   </a>
   
 </li>
@@ -353,48 +290,14 @@
             <article class="md-content__inner md-typeset">
               
                 
-<a href="https://github.com/incatools/boomer/edit/master/docs/usage.md" title="Edit this page" class="md-content__button md-icon">
+<a href="https://github.com/incatools/boomer/edit/master/docs/graphical-output.md" title="Edit this page" class="md-content__button md-icon">
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25z"/></svg>
 </a>
 
 
 
-  <h1>Usage</h1>
-
-<h2 id="usage">Usage</h2>
-<pre><code>Usage: boomer [options]
-  --usage  &lt;bool&gt;
-        Print usage and exit
-  --help | -h  &lt;bool&gt;
-        Print help message and exit
-  --output | -o  &lt;output files/dir name&gt;
-        Name used for folder to ouput clique JSON files; also basename for ontology and Markdown output files.
-  --ptable | -t  &lt;filename&gt;
-        TSV file containing table of mappings with probabilities.
-  --ontology | -a  &lt;filename&gt;
-        OWL file containing all asserted/background axioms.
-  --prefixes | -p  &lt;filename&gt;
-        YAML dictionary of prefix-to-expansion mappings for all prefixes used in the ptable. These namespaces are also used to check for new within-namespace equivalences.
-  --window-count | -w  &lt;positive integer&gt;
-        Number of groups to split a clique of mappings into when shuffling between greedy search runs. Windows maintain their order; mappings within a window are shuffled.
-  --runs | -r  &lt;positive integer&gt;
-        Number of separate shuffled runs to conduct for each greedy search.
-  --exhaustive-search-limit | -e  &lt;positive integer&gt;
-        Maximum size clique for exhaustive search algorithm. Larger cliques use greedy search.
-  --output-internal-axioms | -e  &lt;bool&gt;
-        Include axioms used to enforce proper subclass relationships (e.g. generated disjoint sibling classes) in OWL output (default false).
-  --restrict-output-to-prefixes | -e  &lt;prefix strings (max of 2)&gt;
-        Generate output only for cliques where a mapping between these two namespaces was resolved as something other than its highest probability option.
-</code></pre>
-<h2 id="running">Running</h2>
-<p>A pre-built copy of Boomer can downloaded from the <a href="https://github.com/INCATools/boomer/releases">releases page</a>, e.g., <code>https://github.com/INCATools/boomer/releases/download/v0.1/boomer-0.1.tgz</code>. After unzipping the archive you should see a <code>bin</code> and a <code>lib</code> folder. Keep these together in the same folder, and add the <code>bin</code> folder to your path.</p>
-<p>The current command-line interface is specialized for the term mapping use case (see options above).</p>
-<p>To run Boomer, you must have Java installed. To set the JVM heap size (usually necessary for processing larger files), use an environment variable:</p>
-<pre><code class="language-bash">export JAVA_OPTS=-Xmx10G
-</code></pre>
-<h2 id="example-command-line-from-httpsgithubcomgeneontologygo-rhea-boomblobmastermakefile">Example command line (from https://github.com/geneontology/go-rhea-boom/blob/master/Makefile)</h2>
-<pre><code class="language-bash">boomer --ptable probs.tsv --ontology go-rhea.ofn --window-count 1 --runs 100 --prefixes prefixes.yaml --output rhea-boom --exhaustive-search-limit 14 --restrict-output-to-prefixes=GO --restrict-output-to-prefixes=RHEA
-</code></pre>
+<h1 id="graphical-output">Graphical Output</h1>
+<h2 id="todo-use-obographviz-example-with-install-instructions">TODO - Use obographViz example with install instructions</h2>
 
               
             </article>
@@ -404,41 +307,6 @@
       </main>
       
         <footer class="md-footer">
-  
-    <nav class="md-footer__inner md-grid" aria-label="Footer">
-      
-        
-        <a href=".." class="md-footer__link md-footer__link--prev" aria-label="Previous: Introduction" rel="prev">
-          <div class="md-footer__button md-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-          </div>
-          <div class="md-footer__title">
-            <div class="md-ellipsis">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              Introduction
-            </div>
-          </div>
-        </a>
-      
-      
-        
-        <a href="../specifying-probabilities/" class="md-footer__link md-footer__link--next" aria-label="Next: Specifying probabilities" rel="next">
-          <div class="md-footer__title">
-            <div class="md-ellipsis">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              Specifying probabilities
-            </div>
-          </div>
-          <div class="md-footer__button md-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"/></svg>
-          </div>
-        </a>
-      
-    </nav>
   
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
