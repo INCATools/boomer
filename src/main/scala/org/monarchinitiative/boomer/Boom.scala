@@ -15,21 +15,45 @@ import scala.collection.Searching.InsertionPoint
 object Boom {
 
   type ResolvedUncertainty = (Uncertainty, (Proposal, Boolean))
-  type ResolvedUncertainties = Map[Uncertainty, (Proposal, Boolean)]
+  final case class ResolvedUncertainties(uncertainties: Map[Uncertainty, (Proposal, Boolean)], method: String)
 
   object ResolvedUncertainties {
 
-    def empty: ResolvedUncertainties = Map.empty[Uncertainty, (Proposal, Boolean)]
+    def empty: ResolvedUncertainties = ResolvedUncertainties(Map.empty[Uncertainty, (Proposal, Boolean)], "")
 
   }
 
-  def evaluate(assertions: Set[Axiom],
-               uncertainties: Set[Uncertainty],
-               prohibitedPrefixEquivalences: Set[String],
-               initialReasonerState: ReasonerState,
-               windowCount: Int,
-               runs: Int,
-               exhaustive: Boolean): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
+  def evaluateExhaustively(uncertainties: Set[Uncertainty],
+                           initialReasonerState: ReasonerState,
+                           solutions: Int): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
+    val perplexity = Perplexity(uncertainties)
+    ZIO
+      .fromEither {
+        resolvePerplexity(perplexity, initialReasonerState).map { case res @ Resolved(proposals, newState, _) =>
+          (res :: findFurtherSolutions(res, solutions - 1)).map { resolved =>
+            val selected = PerplexityProposal(resolved.proposals.map(a => a.uncertainty -> a.proposal).to(Map))
+            List(SelectedPerplexityProposal(selected, perplexity, Nil, resolved.reasonerState, initialReasonerState)).flatMap(collectChoices).toMap
+          }
+        }
+      }
+      .map { resolutions =>
+        resolutions.map(resolution => ResolvedUncertainties(resolution, "exhaustive search"))
+      }
+  }
+
+  private def findFurtherSolutions(resolved: Resolved, count: Int): List[Resolved] =
+    if (count > 0) {
+      processQueue(resolved.leftovers) match {
+        case res: Resolved => res :: findFurtherSolutions(res, count - 1)
+        case Open(_)       => Nil //FIXME report error?
+        case Closed        => Nil
+      }
+    } else Nil
+
+  def evaluateGreedily(uncertainties: Set[Uncertainty],
+                       initialReasonerState: ReasonerState,
+                       windowCount: Int,
+                       runs: Int): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
     val binnedUncertainties = Util
       .groupByValueWindows(uncertainties.toList, windowCount, (u: Uncertainty) => u.mostProbable.probability)
       .filter(_.nonEmpty)
@@ -39,39 +63,21 @@ object Boom {
     }
     val maxProbability = uncertainties.toList.map(ah => Math.log(ah.mostProbable.probability)).sum
     scribe.info(s"Max possible joint probability: $maxProbability")
-    val reasonerWithNamespaceChecker = initialReasonerState.copy(queueDelegates =
-      initialReasonerState.queueDelegates + (NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
     val oneEvaluation = for {
       orderedUncertainties <- shuffleWithinWindows(binnedUncertainties)
-      selections <- evaluateInOrder(reasonerWithNamespaceChecker, orderedUncertainties, prohibitedPrefixEquivalences, exhaustive)
+      selections <- evaluateInOrder(initialReasonerState, orderedUncertainties)
     } yield selections.flatMap(collectChoices).toMap
-    ZIO.collectAllPar(List.fill(runs)(oneEvaluation))
+    ZIO.collectAllPar(List.fill(runs)(oneEvaluation)).map { resolutions =>
+      resolutions.map(resolution => ResolvedUncertainties(resolution, "greedy search"))
+    }
   }
 
   private def shuffleWithinWindows(windows: List[List[Uncertainty]]): ZIO[Random, Nothing, List[Uncertainty]] =
     ZIO.foreach(windows)(w => random.shuffle(w)).map(_.flatten)
 
-  def evaluateInOrder(initialState: ReasonerState,
-                      uncertainties: List[Uncertainty],
-                      prohibitedPrefixEquivalences: Set[String],
-                      exhaustive: Boolean): IO[BoomError, List[Selection]] =
-    if (!isIncoherent(initialState))
-      resolve(uncertainties, initialState, exhaustive).map { selected =>
-        val jointProbability = selected.map(s => Math.log(s.probability)).sum
-        scribe.info(s"Found joint probability: $jointProbability")
-        selected
-      }
+  def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty]): IO[BoomError, List[Selection]] =
+    if (!isIncoherent(initialState)) resolveGreedily(uncertainties, initialState)
     else ZIO.fail(BoomErrorMessage("Given ontology is incoherent"))
-
-  def organizeResults(results: List[ResolvedUncertainties]): (ResolvedUncertainties, Map[Uncertainty, Map[(Proposal, Boolean), Int]]) = {
-    val mostProbableResult = results.maxBy(jointProbability)
-    // Count, for each uncertainty, how often each proposal was found
-    val uncertaintyResolutionsInAllRuns = results.flatMap(_.toList)
-    val counted = uncertaintyResolutionsInAllRuns.groupMap(_._1)(_._2).map { case (uncertainty, selections) =>
-      uncertainty -> selections.groupBy(identity).view.mapValues(_.size).to(Map)
-    }
-    (mostProbableResult, counted)
-  }
 
   def collectChoices(selection: Selection): Set[ResolvedUncertainty] = selection match {
     case SelectedProposal(proposal, uncertainty, _, _, _) => Set(uncertainty -> (proposal, proposal == uncertainty.mostProbable))
@@ -79,16 +85,11 @@ object Boom {
       selected.proposal.to(Set).map { case (uncertainty, proposal) => uncertainty -> (proposal, proposal == uncertainty.mostProbable) }
   }
 
-  def resolve(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState, exhaustive: Boolean): IO[BoomError, List[Selection]] =
+  def resolveGreedily(uncertainties: List[Uncertainty], initialReasonerState: ReasonerState): IO[BoomError, List[Selection]] =
     uncertainties match {
       case Nil => ZIO.fail(BoomErrorMessage("No uncertainties to resolve."))
       case next :: remaining =>
-        val result = if (exhaustive) {
-          tryAdding(Perplexity(uncertainties.to(Set)), Nil, initialReasonerState)
-        } else {
-          tryAdding(next, remaining, initialReasonerState)
-        }
-        result match {
+        tryAdding(next, remaining, initialReasonerState) match {
           case None            => ZIO.fail(BoomErrorMessage("The first uncertainty has no proposals which are compatible with the initial reasoner state."))
           case Some(selection) => resolveRemaining(selection :: Nil)
         }
@@ -154,7 +155,7 @@ object Boom {
         }
       case perplexity: Perplexity =>
         resolvePerplexity(perplexity, reasonerState) match {
-          case Right(Resolved(proposals, newState)) =>
+          case Right(Resolved(proposals, newState, leftovers)) =>
             val selected = PerplexityProposal(proposals.map(res => res.uncertainty -> res.proposal).to(Map))
             Some(SelectedPerplexityProposal(selected, perplexity, remaining, newState, reasonerState))
           case Left(error) =>
@@ -167,7 +168,8 @@ object Boom {
 
   final private case class Open(dus: List[DwindlingUncertainty]) extends DwindleStatus
 
-  final private case class Resolved(proposals: List[Resolution], reasonerState: ReasonerState) extends DwindleStatus
+  final private case class Resolved(proposals: List[Resolution], reasonerState: ReasonerState, leftovers: PriorityQueue[DwindlingUncertainty])
+      extends DwindleStatus
 
   private object Closed extends DwindleStatus
 
@@ -193,7 +195,7 @@ object Boom {
         dwindle(next) match {
           case Open(dus)     => processQueue(remaining.enqueue(dus))
           case Closed        => processQueue(remaining)
-          case res: Resolved => res
+          case res: Resolved => res.copy(leftovers = remaining) //TODO here return res along with remaining, which could be used to find next best
         }
       case None => Closed
     }
@@ -206,7 +208,7 @@ object Boom {
         case next :: rest =>
           val dus = next.proposals.to(List).map(p => DwindlingUncertainty(next, p, newSelected, newReasonerState, rest))
           Open(dus)
-        case Nil => Resolved(newSelected, newReasonerState)
+        case Nil => Resolved(newSelected, newReasonerState, PriorityQueue.empty)
       }
     } else {
 //      val one: BigInt = 1
@@ -219,7 +221,7 @@ object Boom {
   private def jointProbability(selections: List[SelectedProposal]): Double = selections.map(s => Math.log(s.selected.probability)).sum
 
   def jointProbability(result: ResolvedUncertainties): Double =
-    result.map { case (_, (proposal, _)) => Math.log(proposal.probability) }.sum
+    result.uncertainties.map { case (_, (proposal, _)) => Math.log(proposal.probability) }.sum
 
   private def isValid(state: ReasonerState): Boolean = !isIncoherent(state) && !hasNamespaceViolations(state)
 

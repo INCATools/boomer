@@ -15,7 +15,7 @@ object TestUnresolvable extends DefaultRunnableSpec {
         axioms <- loadTestAxiomsFromFile("unresolvable-mappings-test1.ofn")
         delegates = Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set.empty, Nil)) //TODO handle error if this is not provided
         whelk = Reasoner.assert(axioms, delegates)
-        result <- Boom.evaluate(axioms, uncertainties1, Set.empty, whelk, 10, 1, false)
+        result <- Boom.evaluateGreedily(uncertainties1, whelk, 10, 1)
       } yield result
       assertM(resultIO.flip)(equalTo(UnresolvableUncertainties))
     },
@@ -24,7 +24,7 @@ object TestUnresolvable extends DefaultRunnableSpec {
         axioms <- loadTestAxiomsFromFile("unresolvable-mappings-test2.ofn")
         delegates = Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set.empty, Nil))
         whelk = Reasoner.assert(axioms, delegates)
-        result <- Boom.evaluate(axioms, uncertainties2, Set.empty, whelk, 10, 1, false)
+        result <- Boom.evaluateGreedily(uncertainties2, whelk, 10, 1)
       } yield assert(result)(isNonEmpty)
     }
   )

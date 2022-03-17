@@ -4,6 +4,7 @@ import caseapp._
 import io.circe.yaml.parser
 import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage, ResolvedUncertainties}
+import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
 import org.phenoscape.scowl._
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
@@ -62,7 +63,10 @@ final case class Options(
     "Generate output only for cliques where a mapping between these two namespaces was resolved as something other than its highest probability option.")
   @ValueDescription("prefix strings (max of 2)")
   @ExtraName("e")
-  restrictOutputToPrefixes: List[String] = Nil
+  restrictOutputToPrefixes: List[String] = Nil,
+  @HelpMessage("Number of next-best solutions for which to report scores.")
+  @ValueDescription("positive integer")
+  subsequentSolutions: Int = 10
 )
 
 object Main extends ZCaseApp[Options] {
@@ -88,34 +92,35 @@ object Main extends ZCaseApp[Options] {
         putStrLn(mappingGroup.size.toString)
       }
       runs = grouped.values.to(List)
+      whelkWithNamespaceChecker = reasonerWithNamespaceChecker(whelk, prohibitedPrefixEquivalences)
       (doExhaustive, doShuffled) = runs.partition(_.size <= options.exhaustiveSearchLimit)
-      exhaustiveResolvedCliques <- ZIO.foreachPar(doExhaustive) { runMappings =>
-        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prohibitedPrefixEquivalences, whelk, options.windowCount, 1, true)
+      exhaustiveResolvedCliques <- ZIO.foreach(doExhaustive) { runMappings =>
+        Boom.evaluateExhaustively(runMappings.map(_.uncertainty), whelkWithNamespaceChecker, options.subsequentSolutions + 1)
       }
-      shuffledResolvedCliques <- ZIO.foreachPar(doShuffled) { runMappings =>
-        Boom.evaluate(assertions, runMappings.map(_.uncertainty), prohibitedPrefixEquivalences, whelk, options.windowCount, options.runs, false)
+      shuffledResolvedCliques <- ZIO.foreach(doShuffled) { runMappings =>
+        Boom.evaluateGreedily(runMappings.map(_.uncertainty), whelkWithNamespaceChecker, options.windowCount, options.runs)
       }
-      bestResolutionsForShuffledCliques = shuffledResolvedCliques.map(_.maxBy(Boom.jointProbability))
-      exhaustiveResultsByClique = exhaustiveResolvedCliques.map(_.head)
-      resultsByClique = Mapping.groupResultsByEquivalenceClique(exhaustiveResultsByClique ::: bestResolutionsForShuffledCliques,
-                                                                equivCliques,
-                                                                mappings)
+      allResolutions = exhaustiveResolvedCliques ::: shuffledResolvedCliques
+      orderedDistinctResolutions = allResolutions.map(_.distinct.sortBy(Boom.jointProbability).reverse)
+      resultsByClique = Mapping.groupResultsByEquivalenceClique(orderedDistinctResolutions, equivCliques, mappings)
       singletons = resultsByClique
-        .filter { case (_, v) => v.size == 1 }
+        .filter { case (_, v) => v.head.uncertainties.size == 1 }
         .values
-        .fold(Map.empty)(_ ++ _)
-      consolidatedResultsByClique = resultsByClique.filterNot { case (_, v) => v.size == 1 } + (Set.empty[AtomicConcept] -> singletons)
+        .map(_.head.uncertainties)
+        .fold(Map.empty[Uncertainty, (Proposal, Boolean)])(_ ++ _)
+      consolidatedResultsByClique = resultsByClique.filterNot { case (_, vs) => vs.head.uncertainties.size == 1 } + (Set.empty[AtomicConcept] -> List(
+        ResolvedUncertainties(singletons, "singletons")))
       filteredResultsByClique = filterCliques(consolidatedResultsByClique, options, prefixes)
-      _ <- writeFilteredResultsToMarkdown(filteredResultsByClique, labelIndex, prefixes, options.output)
+      _ <- writeFilteredResultsToMarkdown(filteredResultsByClique, labelIndex, prefixes, options.output, options.subsequentSolutions)
       _ <- ZIO.effect(new File(options.output).mkdirs())
       _ <- ZIO.foreach_(filteredResultsByClique) { case (clique, resolved) =>
         val cliqueName = cliqueID(clique)
-        OntUtil.writeAsOBOJSON(resolvedUncertaintiesAsOntology(resolved, whelk, labelIndex, cliqueName),
+        OntUtil.writeAsOBOJSON(resolvedUncertaintiesAsOntology(resolved.head, whelk, labelIndex, cliqueName),
                                labelIndex,
                                prefixes,
                                s"${options.output}/$cliqueName.json")
       }
-      resolvedAsOne = (exhaustiveResolvedCliques.flatten ::: bestResolutionsForShuffledCliques).fold(ResolvedUncertainties.empty)((a, b) => a ++ b)
+      resolvedAsOne = (allResolutions.map(_.head.uncertainties)).fold(ResolvedUncertainties.empty.uncertainties)((a, b) => a ++ b)
       _ <- ZIO.effect(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
       _ <- ZIO.effect(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
       end <- clock.nanoTime
@@ -136,9 +141,13 @@ object Main extends ZCaseApp[Options] {
       .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).exitCode.as(ExitCode.failure))
   }
 
-  def filterCliques(cliques: Map[Set[AtomicConcept], ResolvedUncertainties],
+  def reasonerWithNamespaceChecker(reasonerState: ReasonerState, prohibitedPrefixEquivalences: Set[String]): ReasonerState =
+    reasonerState.copy(queueDelegates =
+      reasonerState.queueDelegates + (NamespaceChecker.DelegateKey -> NamespaceChecker(prohibitedPrefixEquivalences, Nil)))
+
+  def filterCliques(cliques: Map[Set[AtomicConcept], List[ResolvedUncertainties]],
                     options: Options,
-                    prefixes: Map[String, String]): Map[Set[AtomicConcept], ResolvedUncertainties] =
+                    prefixes: Map[String, String]): Map[Set[AtomicConcept], List[ResolvedUncertainties]] =
     options.restrictOutputToPrefixes match {
       case prefix1 :: prefix2 :: Nil =>
         (for {
@@ -148,7 +157,7 @@ object Main extends ZCaseApp[Options] {
           .filter { case (terms, resolved) =>
             terms.exists(_.id.startsWith(namespace1)) &&
               terms.exists(_.id.startsWith(namespace2)) &&
-              resolved.exists { case (uncertainty, (proposal, preferred)) =>
+              resolved.head.uncertainties.exists { case (uncertainty, (proposal, preferred)) =>
                 proposal.axioms.exists(_.signature.exists(_.asInstanceOf[AtomicConcept].id.startsWith(namespace1))) &&
                   proposal.axioms.exists(_.signature.exists(_.asInstanceOf[AtomicConcept].id.startsWith(namespace2))) &&
                   !preferred
@@ -166,7 +175,7 @@ object Main extends ZCaseApp[Options] {
     ZIO.effect(new File(dirName).mkdirs()) *>
       ZIO.effect(new PrintWriter(new File(s"$dirName/${cliqueID(clique)}.txt"), "utf-8")).bracketAuto { writer =>
         effectBlocking(writer.println(s"## $cliqueName")) *>
-          ZIO.foreach_(selections) { case (unc, (selection, best)) =>
+          ZIO.foreach_(selections.uncertainties) { case (unc, (selection, best)) =>
             val isBestText = if (best) "(most probable)" else ""
             effectBlocking(writer.write(s"${selection.label}\t$isBestText\t${selection.probability}\n"))
           }
@@ -207,12 +216,14 @@ object Main extends ZCaseApp[Options] {
       AnnotationAssertion(_, RDFSLabel, term: IRI, value ^^ _) <- ontology.getAxioms(AxiomType.ANNOTATION_ASSERTION).asScala
     } yield term.toString -> value).to(Map)
 
-  def writeFilteredResultsToMarkdown(filteredResultsByClique: Map[Set[AtomicConcept], ResolvedUncertainties],
+  def writeFilteredResultsToMarkdown(filteredResultsByClique: Map[Set[AtomicConcept], List[ResolvedUncertainties]],
                                      labelIndex: Map[String, String],
                                      prefixes: Map[String, String],
-                                     filename: String): ZIO[Blocking, Throwable, Unit] =
+                                     filename: String,
+                                     subsequentNum: Int): ZIO[Blocking, Throwable, Unit] =
     ZIO.effect(new PrintWriter(new File(s"$filename.md"), "utf-8")).bracketAuto { writer =>
       ZIO.foreach_(filteredResultsByClique) { case (cliqueSet, selections) =>
+        val bestSelections = selections.head
         val cliqueName =
           if (cliqueSet.isEmpty) "SINGLETONS"
           else
@@ -225,8 +236,13 @@ object Main extends ZCaseApp[Options] {
               }
               .sorted
               .mkString(" ")
-        effectBlocking(writer.println(s"## $cliqueName\n")) *>
-          ZIO.foreach_(selections) { case (unc, (selection, best)) =>
+        val subsequentScores = selections.tail.take(subsequentNum).map(Boom.jointProbability).map(_.toString).mkString(", ")
+        effectBlocking(
+          writer.println(
+            s"## $cliqueName\nMethod: ${bestSelections.method}\nScore: ${Boom.jointProbability(bestSelections)}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
+          )
+        ) *>
+          ZIO.foreach_(bestSelections.uncertainties) { case (unc, (selection, best)) =>
             val isBestText = if (best) "(most probable)" else ""
             selection.label match {
               case mapping: MappingRelation =>
@@ -246,7 +262,7 @@ object Main extends ZCaseApp[Options] {
                                       asserted: ReasonerState,
                                       labelIndex: Map[String, String],
                                       cliqueName: String): OWLOntology = {
-    val allProposalsAxioms = resolved.values.to(Set).flatMap { case (proposal, _) =>
+    val allProposalsAxioms = resolved.uncertainties.values.to(Set).flatMap { case (proposal, _) =>
       val subClassAxioms = proposal.axioms.flatMap(OntUtil.whelkToOWL(_, true))
       val axioms = OntUtil.collapseEquivalents(subClassAxioms)
       axioms.map(ax => ax.getAnnotatedAxiom(Set(Annotation(VizWidth, proposal.probability * 10)).asJava))
