@@ -77,14 +77,14 @@ object Mapping {
     res
   }
 
-  def groupResultsByEquivalenceClique(results: List[ResolvedUncertainties],
+  def groupResultsByEquivalenceClique(results: List[List[ResolvedUncertainties]],
                                       equivalenceCliques: Map[AtomicConcept, Set[AtomicConcept]],
-                                      mappings: Set[Mapping]): Map[Set[AtomicConcept], ResolvedUncertainties] = {
+                                      mappings: Set[Mapping]): Map[Set[AtomicConcept], List[ResolvedUncertainties]] = {
     val mappingsByUncertainty = mappings.map(mapping => mapping.uncertainty -> mapping).toMap
     results
       .map { result =>
         val cliqueOption = for {
-          (uncertainty, _) <- result.headOption
+          (uncertainty, _) <- result.head.uncertainties.headOption
           mapping <- mappingsByUncertainty.get(uncertainty)
           clique <- equivalenceCliques.get(mapping.left)
         } yield clique
