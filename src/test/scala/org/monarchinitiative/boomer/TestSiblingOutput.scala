@@ -29,16 +29,16 @@ object TestSiblingOutput extends DefaultRunnableSpec {
         proposals = best.uncertainties.values.map(_._1).to(Set)
         a1b1 = Siblings(A1, B1)
         ont = resolvedUncertaintiesAsOntology(best, whelkN, Map.empty, "test")
-        siblingAxioms = ont.getAxioms().asScala.to(Set).collect { case ax @ AnnotationAssertion(anns, OntUtil.SiblingOf, a, b) =>
+        siblingAxioms = ont.getAxioms().asScala.to(Set).collect { case ax @ AnnotationAssertion(_, OntUtil.SiblingOf, _, _) =>
           ax
         }
         obograph = asOBOGraphs(ont, Map.empty, prefixes)
-        _ = println(obograph)
-        _ = println(ont)
       } yield assertTrue(proposals.size == 2) &&
         assertTrue(proposals.exists(_.label == a1b1)) &&
         assertTrue(siblingAxioms.size == 1) &&
-        assertTrue(siblingAxioms.head.getAnnotations(VizWidth).asScala.to(Set).nonEmpty)
+        assertTrue(siblingAxioms.head.getAnnotations(VizWidth).asScala.to(Set).nonEmpty) &&
+        assertTrue(obograph.graphs.head.nodes.to(Set).size == 3) &&
+        assertTrue(obograph.graphs.head.edges.to(Set).size == 2)
     }
   }
 
