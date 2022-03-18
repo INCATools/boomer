@@ -58,12 +58,10 @@ final case class Options(
   @HelpMessage(
     "Include axioms used to enforce proper subclass relationships (e.g. generated disjoint sibling classes) in OWL output (default false).")
   @ValueDescription("bool")
-  @ExtraName("e")
   outputInternalAxioms: Boolean = false,
   @HelpMessage(
     "Generate output only for cliques where a mapping between these two namespaces was resolved as something other than its highest probability option.")
   @ValueDescription("prefix strings (max of 2)")
-  @ExtraName("e")
   restrictOutputToPrefixes: List[String] = Nil,
   @HelpMessage("Number of next-best solutions for which to report scores.")
   @ValueDescription("positive integer")
