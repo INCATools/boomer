@@ -1,14 +1,15 @@
 package org.monarchinitiative.boomer
 
-import java.io.File
-
 import org.geneontology.whelk.{AtomicConcept, Axiom, ConceptInclusion, Reasoner}
 import org.monarchinitiative.boomer.Boom.{BoomErrorMessage, ResolvedUncertainties}
 import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
-import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE}
+import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE, BoomPrefix}
+import org.phenoscape.scowl._
+import org.semanticweb.owlapi.model.OWLAnnotationProperty
 import zio.blocking.Blocking
 import zio.{Task, ZIO}
 
+import java.io.File
 import scala.io.Source
 
 object Mapping {
@@ -21,7 +22,7 @@ object Mapping {
       }
       .map(_.to(Set))
 
-  private def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Mapping] = {
+  def parsePTableLine(line: String, prefixes: Map[String, String]): Task[Mapping] = {
     val columns = line.split("\\t", -1)
     if (columns.size == 6) {
       val leftCURIE = columns(0).trim
@@ -40,6 +41,7 @@ object Mapping {
       } yield {
         val equivalenceProposal =
           Proposal(Equivalent(left, right), Set(ConceptInclusion(left, right), ConceptInclusion(right, left)), probEquivalent)
+        val siblingsProposal = Proposal(Siblings(left, right), disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
         Mapping(
           left,
           right,
@@ -48,7 +50,7 @@ object Mapping {
               Proposal(ProperSubClassOf(left, right), disjointSiblingOfLeftUnderRight + ConceptInclusion(left, right), probProperSubLeftRight),
               Proposal(ProperSuperClassOf(left, right), disjointSiblingOfRightUnderLeft + ConceptInclusion(right, left), probProperSubRightLeft),
               equivalenceProposal,
-              Proposal(Siblings(left, right), disjointSiblingOfLeftUnderRight ++ disjointSiblingOfRightUnderLeft, probNoSubsumption)
+              siblingsProposal
             ).filter(_.probability > 0.0)
           ),
           equivalenceProposal

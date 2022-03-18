@@ -1,12 +1,9 @@
 package org.monarchinitiative.boomer
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.circe.generic.auto._
 import io.circe.syntax._
 import org.apache.commons.codec.digest.DigestUtils
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS
-import org.geneontology.obographs.owlapi.FromOwl
 import org.geneontology.whelk.BuiltIn.Bottom
 import org.geneontology.whelk.{Individual => _, _}
 import org.monarchinitiative.boomer.Boom.BoomErrorMessage
@@ -19,7 +16,7 @@ import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
 import zio.blocking._
 
-import java.io.{File, FileOutputStream, PrintWriter}
+import java.io.{File, PrintWriter}
 import java.util.UUID
 import scala.jdk.CollectionConverters._
 
@@ -32,6 +29,8 @@ object OntUtil {
   private val IsPartOfAP = AnnotationProperty(DCTERMS.IS_PART_OF.stringValue)
   private val UncertaintyClass = Class(s"$BoomPrefix/Uncertainty")
   private val ProposalClass = Class(s"$BoomPrefix/Proposal")
+  val SiblingOf: OWLAnnotationProperty = AnnotationProperty(s"$BoomPrefix/siblingOf")
+  val VizWidth: OWLAnnotationProperty = AnnotationProperty("https://w3id.org/kgviz/penwidth")
 
   def readProbabilisticOntology(file: File): ZIO[Blocking, Throwable, ProbabilisticOntology] = for {
     manager <- Task.effect(OWLManager.createOWLOntologyManager())
@@ -156,17 +155,6 @@ object OntUtil {
       }
       .getOrElse(iri)
 
-  def writeAsOBOJSONold(ontology: OWLOntology, filename: String): ZIO[Blocking, Throwable, Unit] =
-    for {
-      gd <- ZIO.effect(new FromOwl().generateGraphDocument(ontology))
-      mapper = new ObjectMapper()
-      _ = mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-      writer = mapper.writerWithDefaultPrettyPrinter
-      _ <- ZIO.effect(new FileOutputStream(new File(filename))).bracketAuto { ontStream =>
-        effectBlocking(writer.writeValue(ontStream, gd))
-      }
-    } yield ()
-
   def writeAsOBOJSON(ontology: OWLOntology,
                      labelIndex: Map[String, String],
                      prefixes: Map[String, String],
@@ -179,29 +167,43 @@ object OntUtil {
 
   def asOBOGraphs(ontology: OWLOntology, labelIndex: Map[String, String], prefixes: Map[String, String]): OBOGraphs = {
     val axioms = ontology.getAxioms().asScala
-    val (allNodes, allEdges) = axioms.foldLeft((Set.empty[Node], Set.empty[Edge])) { case ((nodes, edges), axiom) =>
+    val classIRIs = ontology.getClassesInSignature(Imports.EXCLUDED).asScala.to(Set).map(_.getIRI)
+    val siblingIRIs = ontology
+      .getAxioms(AxiomType.ANNOTATION_ASSERTION)
+      .asScala
+      .to(Set)
+      .collect { case AnnotationAssertion(_, SiblingOf, subject: IRI, target: IRI) =>
+        Set(subject, target)
+      }
+      .reduceOption(_ ++ _)
+      .toSet
+      .flatten
+    val allNodes = (classIRIs ++ siblingIRIs).map { iri =>
+      Node(ID(compactIRI(iri.toString, prefixes)), "CLASS", labelIndex.get(iri.toString))
+    }
+    val allEdges = axioms.foldLeft(Set.empty[Edge]) { case (edges, axiom) =>
       axiom match {
         case SubClassOf(anns, Class(sub), Class(sup)) =>
-          val subNode = Node(ID(compactIRI(sub.toString, prefixes)), "CLASS", labelIndex.get(sub.toString))
-          val superNode = Node(ID(compactIRI(sup.toString, prefixes)), "CLASS", labelIndex.get(sup.toString))
           val edgeType = if (anns.nonEmpty) "is_a" else "asserted_is_a"
           val meta = Meta(anns.map(asPropertyValue).to(List))
           val edge = Edge(ID(compactIRI(sub.toString, prefixes)), ID(edgeType), ID(compactIRI(sup.toString, prefixes)), meta)
-          (nodes + subNode + superNode) -> (edges + edge)
+          edges + edge
         case EquivalentClasses(anns, classes) =>
-          classes.to(List).collect { case c: OWLClass => c }.grouped(2).foldLeft((nodes, edges)) { case ((nodesWithEquiv, edgesWithEquiv), pair) =>
+          classes.to(List).collect { case c: OWLClass => c }.grouped(2).foldLeft(edges) { case (edgesWithEquiv, pair) =>
             if (pair.size == 2) {
               val sub = pair(0).getIRI.toString
               val sup = pair(1).getIRI.toString
-              val subNode = Node(ID(compactIRI(sub, prefixes)), "CLASS", labelIndex.get(sub))
-              val superNode = Node(ID(compactIRI(sup, prefixes)), "CLASS", labelIndex.get(sup))
               val edgeType = if (anns.nonEmpty) "owl:equivalentClass" else "asserted_equivalent_class"
               val meta = Meta(anns.map(asPropertyValue).to(List))
               val edge = Edge(ID(compactIRI(sub, prefixes)), ID(edgeType), ID(compactIRI(sup, prefixes)), meta)
-              (nodesWithEquiv + subNode + superNode) -> (edgesWithEquiv + edge)
-            } else (nodesWithEquiv, edgesWithEquiv)
+              edgesWithEquiv + edge
+            } else edgesWithEquiv
           }
-        case _ => (nodes, edges)
+        case AnnotationAssertion(anns, SiblingOf, subject: IRI, target: IRI) =>
+          val meta = Meta(anns.map(asPropertyValue).to(List))
+          val edge = Edge(ID(compactIRI(subject.toString, prefixes)), ID("siblingOf"), ID(compactIRI(target.toString, prefixes)), meta)
+          edges + edge
+        case _ => edges
       }
     }
     val equivalenceSets = axioms.collect { case e: OWLEquivalentClassesAxiom => e }.foldLeft(Set.empty[Set[ID]]) { case (idSets, next) =>

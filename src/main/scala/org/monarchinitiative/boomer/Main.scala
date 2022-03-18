@@ -5,10 +5,11 @@ import io.circe.yaml.parser
 import org.geneontology.whelk.{AtomicConcept, Bridge, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Boom.{BoomError, BoomErrorMessage, ResolvedUncertainties}
 import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
+import org.monarchinitiative.boomer.OntUtil.VizWidth
 import org.phenoscape.scowl._
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
-import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAxiom, OWLOntology}
+import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAnnotationProperty, OWLAxiom, OWLOntology}
 import scribe.Level
 import zio.ZIO.ZIOAutoCloseableOps
 import zio._
@@ -206,7 +207,7 @@ object Main extends ZCaseApp[Options] {
       if ns1.contains(ns2)
     } yield (ns1, ns2)).isEmpty
 
-  private def groupByClique(mappings: Set[Mapping], cliques: Map[AtomicConcept, Set[AtomicConcept]]): Map[Set[AtomicConcept], Set[Mapping]] =
+  def groupByClique(mappings: Set[Mapping], cliques: Map[AtomicConcept, Set[AtomicConcept]]): Map[Set[AtomicConcept], Set[Mapping]] =
     mappings.groupBy(mapping => cliques.getOrElse(mapping.left, Set(mapping.left)))
 
   /** Map of IRI strings to label strings
@@ -256,12 +257,11 @@ object Main extends ZCaseApp[Options] {
       }
     }
 
-  private val VizWidth = AnnotationProperty("https://w3id.org/kgviz/penwidth")
-
   def resolvedUncertaintiesAsOntology(resolved: ResolvedUncertainties,
                                       asserted: ReasonerState,
                                       labelIndex: Map[String, String],
                                       cliqueName: String): OWLOntology = {
+    val selectedProposals = resolved.uncertainties.values.to(Set).map(_._1)
     val allProposalsAxioms = resolved.uncertainties.values.to(Set).flatMap { case (proposal, _) =>
       val subClassAxioms = proposal.axioms.flatMap(OntUtil.whelkToOWL(_, true))
       val axioms = OntUtil.collapseEquivalents(subClassAxioms)
@@ -284,7 +284,10 @@ object Main extends ZCaseApp[Options] {
       cls <- allClassAxioms.flatMap(_.getClassesInSignature.asScala)
       label <- labelIndex.get(cls.getIRI.toString)
     } yield AnnotationAssertion(RDFSLabel, cls, label)
-    val allAxioms = allClassAxioms ++ labelAxioms
+    val siblingsAxioms = selectedProposals.collect { case Proposal(Siblings(left, right), _, prob) =>
+      AnnotationAssertion(Set(Annotation(VizWidth, prob * 10)), OntUtil.SiblingOf, Class(left.id), Class(right.id))
+    }
+    val allAxioms = allClassAxioms ++ labelAxioms ++ siblingsAxioms
     OWLManager.createOWLOntologyManager().createOntology(allAxioms.asJava, IRI.create(s"urn:clique:$cliqueName"))
   }
 
