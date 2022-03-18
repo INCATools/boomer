@@ -237,9 +237,17 @@ object Main extends ZCaseApp[Options] {
               .sorted
               .mkString(" ")
         val subsequentScores = selections.tail.take(subsequentNum).map(Boom.jointProbability).map(_.toString).mkString(", ")
+        val score = Boom.jointProbability(bestSelections)
+        val confidence =
+          if (selections.length >= 2) {
+            Math.exp(score) / (Math.exp(Boom.jointProbability(selections(1))) + Math.exp(score))
+          } else
+            1.0
+        val estimatedPosterior =
+            Math.exp(score) / selections.map(Boom.jointProbability).map(Math.exp).sum
         effectBlocking(
           writer.println(
-            s"## $cliqueName\nMethod: ${bestSelections.method}\nScore: ${Boom.jointProbability(bestSelections)}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
+            s"## $cliqueName\nMethod: ${bestSelections.method}\nScore: ${score}\nEstimated probability: ${estimatedPosterior}\nConfidence: ${confidence}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
           )
         ) *>
           ZIO.foreach_(bestSelections.uncertainties) { case (unc, (selection, best)) =>
