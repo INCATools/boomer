@@ -18,7 +18,7 @@ object TestSiblingOutput extends DefaultRunnableSpec {
   private val B1 = AtomicConcept("http://example.org/B/1")
 
   def spec = suite("TestSiblingOutput") {
-    testM("") {
+    testM("Selected sibling proposals should result in an annotation property relation and an edge in the OBOgraph") {
       for {
         mappings <- ZIO.foreach(probs.split("\n", -1).toSet)(Mapping.parsePTableLine(_, prefixes))
         prohibitedPrefixEquivalences = prefixes.values.to(Set)
