@@ -1,14 +1,14 @@
 package org.monarchinitiative.boomer
 
 import org.geneontology.whelk.{AtomicConcept, ReasonerState}
-import org.monarchinitiative.boomer.Main.{groupByClique, reasonerWithNamespaceChecker, resolvedUncertaintiesAsOntology}
+import org.monarchinitiative.boomer.Main.{reasonerWithNamespaceChecker, resolvedUncertaintiesAsOntology}
 import org.monarchinitiative.boomer.OntUtil.{asOBOGraphs, VizWidth}
-import zio.test.Assertion._
-import zio.test._
+import org.phenoscape.scowl._
+import org.semanticweb.owlapi.model.OWLDisjointClassesAxiom
 import zio._
+import zio.test._
 
 import scala.jdk.CollectionConverters._
-import org.phenoscape.scowl._
 
 object TestSiblingOutput extends DefaultRunnableSpec {
 
@@ -33,12 +33,14 @@ object TestSiblingOutput extends DefaultRunnableSpec {
           ax
         }
         obograph = asOBOGraphs(ont, Map.empty, prefixes)
+        fullOwlAxioms = proposals.flatMap(_.axioms).flatMap(OntUtil.whelkToOWL(_, false).toSet)
       } yield assertTrue(proposals.size == 2) &&
         assertTrue(proposals.exists(_.label == a1b1)) &&
         assertTrue(siblingAxioms.size == 1) &&
         assertTrue(siblingAxioms.head.getAnnotations(VizWidth).asScala.to(Set).nonEmpty) &&
         assertTrue(obograph.graphs.head.nodes.to(Set).size == 3) &&
-        assertTrue(obograph.graphs.head.edges.to(Set).size == 2)
+        assertTrue(obograph.graphs.head.edges.to(Set).size == 2) &&
+        assertTrue(fullOwlAxioms.exists(_.isInstanceOf[OWLDisjointClassesAxiom]))
     }
   }
 

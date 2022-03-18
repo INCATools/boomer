@@ -15,9 +15,9 @@ import org.semanticweb.owlapi.model.parameters.Imports
 import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
 import zio.blocking._
+import zio.random.Random
 
 import java.io.{File, PrintWriter}
-import java.util.UUID
 import scala.jdk.CollectionConverters._
 
 object OntUtil {
@@ -95,9 +95,9 @@ object OntUtil {
     }
   }
 
-  def negateConceptInclusion(axiom: ConceptInclusion): Task[Set[ConceptInclusion]] = for {
-    uuid <- ZIO.effect(UUID.randomUUID().toString)
-    newClass = AtomicConcept(s"urn:uuid:$uuid")
+  def negateConceptInclusion(axiom: ConceptInclusion): RIO[Random, Set[ConceptInclusion]] = for {
+    uuid <- random.nextUUID
+    newClass = AtomicConcept(s"urn:uuid:${uuid.toString}")
   } yield Set(ConceptInclusion(newClass, axiom.subclass), ConceptInclusion(Conjunction(newClass, axiom.superclass), Bottom))
 
   /** This produces the same axioms as negating the reversed concept inclusion (superclass/subclass).
@@ -112,14 +112,19 @@ object OntUtil {
   }
 
   /** Convert the Whelk ConceptInclusion to an OWLSubClassOfAxiom, if both terms are named classes.
+    * Also converts ConceptInclusions matching the DisjointSibling pattern into DisjointClasses axioms.
+    * This method is tailored to mapping inputs, and may not provide a general translation for other
+    * use cases.
     *
     * @param ci axiom to convert
-    * @return Some[OWLSubClassOfAxiom], or None if a term is an anonymous expression.
+    * @return Some[OWLClassAxiom], or None if a term is an anonymous expression.
     */
-  def whelkToOWL(ci: ConceptInclusion, excludeInternal: Boolean): Option[OWLSubClassOfAxiom] = ci match {
+  def whelkToOWL(ci: ConceptInclusion, excludeInternal: Boolean): Option[OWLClassAxiom] = ci match {
     case ConceptInclusion(AtomicConcept(sub), AtomicConcept(sup))
         if !excludeInternal || (!sub.startsWith(DisjointSiblingPrefix)) && (!sup.startsWith(DisjointSiblingPrefix)) =>
       Some(SubClassOf(Class(sub), Class(sup)))
+    case ConceptInclusion(Conjunction(AtomicConcept(left), AtomicConcept(right)), Bottom) if !excludeInternal =>
+      Some(DisjointClasses(Class(left), Class(right)))
     case _ => None
   }
 
