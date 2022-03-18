@@ -9,7 +9,7 @@ import org.monarchinitiative.boomer.OntUtil.VizWidth
 import org.phenoscape.scowl._
 import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
-import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAnnotationProperty, OWLAxiom, OWLOntology}
+import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAnnotationProperty, OWLAxiom, OWLDisjointClassesAxiom, OWLOntology, OWLSubClassOfAxiom}
 import scribe.Level
 import zio.ZIO.ZIOAutoCloseableOps
 import zio._
@@ -126,8 +126,11 @@ object Main extends ZCaseApp[Options] {
       _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
       selections = resolvedAsOne.values
       axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms))).to(Set)
-      axiomsUsingEquivalence = OntUtil.collapseEquivalents(axioms)
-      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(axiomsUsingEquivalence.toSet[OWLAxiom].asJava))
+      subclassAxioms = axioms.collect { case x: OWLSubClassOfAxiom => x }
+      disjointAxioms = axioms.collect { case x: OWLDisjointClassesAxiom => x }
+      axiomsUsingEquivalence = OntUtil.collapseEquivalents(subclassAxioms)
+      allAxioms = axiomsUsingEquivalence ++ disjointAxioms
+      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(allAxioms.toSet[OWLAxiom].asJava))
       _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
         effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
@@ -238,12 +241,9 @@ object Main extends ZCaseApp[Options] {
         val subsequentScores = selections.tail.take(subsequentNum).map(Boom.jointProbability).map(_.toString).mkString(", ")
         val score = Boom.jointProbability(bestSelections)
         val confidence =
-          if (selections.length >= 2) {
-            Math.exp(score) / (Math.exp(Boom.jointProbability(selections(1))) + Math.exp(score))
-          } else
-            1.0
-        val estimatedPosterior =
-            Math.exp(score) / selections.map(Boom.jointProbability).map(Math.exp).sum
+          if (selections.length >= 2) Math.exp(score) / (Math.exp(Boom.jointProbability(selections(1))) + Math.exp(score))
+          else 1.0
+        val estimatedPosterior = Math.exp(score) / selections.map(Boom.jointProbability).map(Math.exp).sum
         effectBlocking(
           writer.println(
             s"## $cliqueName\nMethod: ${bestSelections.method}\nScore: ${score}\nEstimated probability: ${estimatedPosterior}\nConfidence: ${confidence}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
@@ -269,7 +269,7 @@ object Main extends ZCaseApp[Options] {
                                       cliqueName: String): OWLOntology = {
     val selectedProposals = resolved.uncertainties.values.to(Set).map(_._1)
     val allProposalsAxioms = resolved.uncertainties.values.to(Set).flatMap { case (proposal, _) =>
-      val subClassAxioms = proposal.axioms.flatMap(OntUtil.whelkToOWL(_, true))
+      val subClassAxioms = proposal.axioms.flatMap(OntUtil.whelkToOWL(_, true)).collect { case x: OWLSubClassOfAxiom => x }
       val axioms = OntUtil.collapseEquivalents(subClassAxioms)
       axioms.map(ax => ax.getAnnotatedAxiom(Set(Annotation(VizWidth, proposal.probability * 10)).asJava))
     }
