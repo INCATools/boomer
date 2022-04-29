@@ -82,9 +82,9 @@ object Main extends ZCaseApp[Options] {
       assertions = Bridge.ontologyToAxioms(ont)
       prohibitedPrefixEquivalences = prefixes.values.to(Set)
       whelkTask = ZIO.effectTotal(Reasoner.assert(assertions, Map.empty, false))
+      whelk <- whelkTask
       equivCliquesTask = ZIO.effectTotal(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
-      (equivCliques, whelk) <- ZIO.tupledPar(equivCliquesTask, whelkTask)
-      _ <- putStrLn(s"Num equiv cliques: ${equivCliques.values.toSet.size}")
+      equivCliques <- equivCliquesTask
       grouped = groupByClique(mappings, equivCliques)
       _ <- ZIO.effect(scribe.info(s"Num mapping cliques: ${grouped.size}"))
       _ <- ZIO.foreach_(grouped) { case (grouping, mappingGroup) =>

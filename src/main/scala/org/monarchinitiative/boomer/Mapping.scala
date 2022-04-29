@@ -1,11 +1,9 @@
 package org.monarchinitiative.boomer
 
-import org.geneontology.whelk.{AtomicConcept, Axiom, ConceptInclusion, Reasoner}
+import org.geneontology.whelk._
 import org.monarchinitiative.boomer.Boom.{BoomErrorMessage, ResolvedUncertainties}
 import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
-import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE, BoomPrefix}
-import org.phenoscape.scowl._
-import org.semanticweb.owlapi.model.OWLAnnotationProperty
+import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE}
 import zio.blocking.Blocking
 import zio.{Task, ZIO}
 
@@ -60,10 +58,58 @@ object Mapping {
   }
 
   def makeMaximalEquivalenceCliques(mappings: Set[Mapping], assertions: Set[Axiom]): Map[AtomicConcept, Set[AtomicConcept]] = {
-    val allAxioms = assertions ++ mappings.flatMap(_.equivalenceProposal.axioms)
-    val whelk = Reasoner.assert(axioms = allAxioms, disableBottom = true)
+    val allAxioms: Set[Axiom] = mappings.flatMap(_.equivalenceProposal.axioms) //assertions ++
+    val mappingsWhelk = Reasoner.assert(axioms = allAxioms, disableBottom = true)
+    val mappingsTaxonomy = mappingsWhelk.computeTaxonomy
+    val mappingsGroups = mappingsTaxonomy.map { case (concept, (equivs, _)) => equivs + concept }.to(Set)
+    val termToRepresentative = (for {
+      group <- mappingsGroups.iterator
+      representative = group.minBy(_.id)
+      term <- group
+    } yield term -> representative).toMap
+    val representativeToGroup = mappingsGroups.iterator.map(g => g.toSeq.minBy(_.id) -> g).toMap
+    def replaceInConcept(concept: Concept, map: Map[AtomicConcept, AtomicConcept]): Concept =
+      concept match {
+        case a: AtomicConcept                      => map.getOrElse(a, a)
+        case Conjunction(left, right)              => Conjunction(replaceInConcept(left, map), replaceInConcept(right, map))
+        case Disjunction(operands)                 => Disjunction(operands.map(o => replaceInConcept(o, map)))
+        case ExistentialRestriction(role, concept) => ExistentialRestriction(role, replaceInConcept(concept, map))
+        case sr: SelfRestriction                   => sr
+        case dr: DataRestriction                   => dr
+        case dhv: DataHasValue                     => dhv
+        case Complement(concept)                   => Complement(replaceInConcept(concept, map))
+        case n: Nominal                            => n
+      }
+    def replaceInRuleAtom(atom: RuleAtom, map: Map[AtomicConcept, AtomicConcept]): RuleAtom =
+      atom match {
+        case ConceptAtom(predicate, argument) => ConceptAtom(replaceInConcept(predicate, map), argument)
+        case ra: RoleAtom                     => ra
+      }
+    val updatedAxioms: Set[Axiom] = assertions.map {
+      case ConceptInclusion(subclass, superclass) =>
+        ConceptInclusion(replaceInConcept(subclass, termToRepresentative), replaceInConcept(superclass, termToRepresentative))
+      case ri: RoleInclusion                     => ri
+      case rc: RoleComposition                   => rc
+      case ConceptAssertion(concept, individual) => ConceptAssertion(replaceInConcept(concept, termToRepresentative), individual)
+      case ra: RoleAssertion                     => ra
+      case Rule(body, head) =>
+        Rule(body.map(a => replaceInRuleAtom(a, termToRepresentative)), head.map(a => replaceInRuleAtom(a, termToRepresentative)))
+    }
+    val whelk = Reasoner.assert(updatedAxioms, disableBottom = true)
     val taxonomy = whelk.computeTaxonomy
-    taxonomy.map { case (concept, (equivs, _)) => concept -> (equivs + concept) }.to(Map)
+    val equivGroups = taxonomy.map { case (concept, (equivs, _)) => equivs + concept }.to(Set)
+    val representativeToEquivGroup = (for {
+      group <- equivGroups.iterator
+      representative = group.minBy(_.id)
+    } yield representative -> group).toMap
+    val representativesToFullCliques = for {
+      (representative, equivGroup) <- representativeToEquivGroup
+      groupMembersForAllEquivs = equivGroup.flatMap(equiv => representativeToGroup.get(equiv).toSet.flatten)
+    } yield representative -> (equivGroup ++ groupMembersForAllEquivs)
+    (for {
+      clique <- representativesToFullCliques.valuesIterator
+      c <- clique
+    } yield c -> clique).toMap
   }
 
   def groupHotspotsByEquivalenceClique(hotspots: Map[Uncertainty, Map[(Proposal, Boolean), Int]],
