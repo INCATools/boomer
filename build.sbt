@@ -18,17 +18,17 @@ testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 
 fork in Test := true
 
-val zioVersion = "1.0.13"
+val zioVersion = "1.0.15"
 
 libraryDependencies ++= {
   Seq(
-    "org.geneontology"           %% "whelk-owlapi"        % "1.1.1",
+    "org.geneontology"           %% "whelk-owlapi"        % "1.1.2",
     "dev.zio"                    %% "zio"                 % zioVersion,
     "org.phenoscape"             %% "scowl"               % "1.4.0",
-    "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.21",
+    "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.22",
     "org.geneontology"            % "obographs"           % "0.2.1",
     "commons-codec"               % "commons-codec"       % "1.15",
-    "com.outr"                   %% "scribe-slf4j"        % "3.8.2",
+    "com.outr"                   %% "scribe-slf4j"        % "3.8.3",
     "io.circe"                   %% "circe-core"          % "0.14.2",
     "io.circe"                   %% "circe-generic"       % "0.14.2",
     "io.circe"                   %% "circe-yaml"          % "0.14.1",
