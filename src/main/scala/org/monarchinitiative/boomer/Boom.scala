@@ -2,11 +2,10 @@ package org.monarchinitiative.boomer
 
 import jp.yukoba.collection.immutable.PriorityQueue
 import org.geneontology.whelk.BuiltIn._
-import org.geneontology.whelk.{AtomicConcept, Axiom, Reasoner, ReasonerState}
+import org.geneontology.whelk.{AtomicConcept, Reasoner, ReasonerState}
 import org.monarchinitiative.boomer.Model._
 import org.monarchinitiative.boomer.Util.BisectSearchOp
-import zio._
-import zio.random.Random
+import zio.{Random, _}
 
 import scala.Ordering.Double.TotalOrdering
 import scala.annotation.tailrec
@@ -25,7 +24,7 @@ object Boom {
 
   def evaluateExhaustively(uncertainties: Set[Uncertainty],
                            initialReasonerState: ReasonerState,
-                           solutions: Int): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
+                           solutions: Int): ZIO[Any, BoomError, List[ResolvedUncertainties]] = {
     val perplexity = Perplexity(uncertainties)
     ZIO
       .fromEither {
@@ -53,7 +52,7 @@ object Boom {
   def evaluateGreedily(uncertainties: Set[Uncertainty],
                        initialReasonerState: ReasonerState,
                        windowCount: Int,
-                       runs: Int): ZIO[Random, BoomError, List[ResolvedUncertainties]] = {
+                       runs: Int): ZIO[Any, BoomError, List[ResolvedUncertainties]] = {
     val binnedUncertainties = Util
       .groupByValueWindows(uncertainties.toList, windowCount, (u: Uncertainty) => u.mostProbable.probability)
       .filter(_.nonEmpty)
@@ -72,8 +71,8 @@ object Boom {
     }
   }
 
-  private def shuffleWithinWindows(windows: List[List[Uncertainty]]): ZIO[Random, Nothing, List[Uncertainty]] =
-    ZIO.foreach(windows)(w => random.shuffle(w)).map(_.flatten)
+  private def shuffleWithinWindows(windows: List[List[Uncertainty]]): ZIO[Any, Nothing, List[Uncertainty]] =
+    ZIO.foreach(windows)(w => Random.shuffle(w)).map(_.flatten)
 
   def evaluateInOrder(initialState: ReasonerState, uncertainties: List[Uncertainty]): IO[BoomError, List[Selection]] =
     if (!isIncoherent(initialState)) resolveGreedily(uncertainties, initialState)

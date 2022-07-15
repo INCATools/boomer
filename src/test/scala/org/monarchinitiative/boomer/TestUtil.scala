@@ -7,8 +7,8 @@ import zio._
 object TestUtil {
 
   def loadTestAxiomsFromFile(fileName: String): Task[Set[Axiom]] = for {
-    manager <- ZIO.effect(OWLManager.createOWLOntologyManager())
-    ontology <- ZIO.effect(manager.loadOntologyFromOntologyDocument(this.getClass.getResourceAsStream(fileName)))
+    manager <- ZIO.attempt(OWLManager.createOWLOntologyManager())
+    ontology <- ZIO.attempt(manager.loadOntologyFromOntologyDocument(this.getClass.getResourceAsStream(fileName)))
   } yield Bridge.ontologyToAxioms(ontology)
 
 }

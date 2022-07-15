@@ -5,14 +5,14 @@ import caseapp.core.help.{Help, WithHelp}
 import caseapp.core.parser.Parser
 import caseapp.core.util.Formatter
 import caseapp.core.{Error, RemainingArgs}
+import zio.Console.printLine
 import zio._
-import zio.console.{putStrLn, Console}
 
 import java.io.IOException
 
 /** Adapted from caseapp.cats.IOCaseApp
   */
-abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T]) extends App {
+abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T]) extends ZIOAppDefault {
 
   private[this] def parser: Parser[T] = {
     val p = parser0.nameFormatter(nameFormatter)
@@ -22,16 +22,16 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
       p
   }
 
-  def run(options: T, remainingArgs: RemainingArgs): ZIO[ZEnv, Nothing, ExitCode]
+  def run(options: T, remainingArgs: RemainingArgs): ZIO[Any, Nothing, ExitCode]
 
-  private[this] def error(message: Error): ZIO[Console, IOException, ExitCode] =
-    putStrLn(message.message).as(ExitCode.failure)
+  private[this] def error(message: Error): ZIO[Any, IOException, ExitCode] =
+    printLine(message.message).as(ExitCode.failure)
 
-  private[this] def helpAsked: ZIO[Console, IOException, ExitCode] =
-    putStrLn(messages.withHelp.help).as(ExitCode.success)
+  private[this] def helpAsked: ZIO[Any, IOException, ExitCode] =
+    printLine(messages.withHelp.help).as(ExitCode.success)
 
-  private[this] def usageAsked: ZIO[Console, IOException, ExitCode] =
-    putStrLn(messages.withHelp.usage).as(ExitCode.success)
+  private[this] def usageAsked: ZIO[Any, IOException, ExitCode] =
+    printLine(messages.withHelp.usage).as(ExitCode.success)
 
   /** Arguments are expanded then parsed. By default, argument expansion is the identity function.
     * Overriding this method allows plugging in an arbitrary argument expansion logic.
@@ -61,13 +61,16 @@ abstract class ZCaseApp[T](implicit val parser0: Parser[T], val messages: Help[T
 
   private[this] def nameFormatter: Formatter[Name] = Formatter.DefaultNameFormatter
 
-  override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] =
-    parser.withHelp.detailedParse(expandArgs(args), stopAtFirstUnrecognized) match {
-      case Left(err)                                        => error(err).orDie
-      case Right((WithHelp(_, true, _), _))                 => helpAsked.orDie
-      case Right((WithHelp(true, _, _), _))                 => usageAsked.orDie
-      case Right((WithHelp(_, _, Left(err)), _))            => error(err).orDie
-      case Right((WithHelp(_, _, Right(t)), remainingArgs)) => run(t, remainingArgs)
+  override def run: ZIO[Environment with ZIOAppArgs with Scope, Any, Any] =
+    this.getArgs.flatMap { appArgs =>
+      val args = appArgs.toList
+      parser.withHelp.detailedParse(expandArgs(args), stopAtFirstUnrecognized) match {
+        case Left(err)                                        => error(err).orDie
+        case Right((WithHelp(_, true, _), _))                 => helpAsked.orDie
+        case Right((WithHelp(true, _, _), _))                 => usageAsked.orDie
+        case Right((WithHelp(_, _, Left(err)), _))            => error(err).orDie
+        case Right((WithHelp(_, _, Right(t)), remainingArgs)) => run(t, remainingArgs)
+      }
     }
 
 }

@@ -74,13 +74,13 @@ object TestOntUtilData {
 
 }
 
-object TestOntUtil extends DefaultRunnableSpec {
+object TestOntUtil extends ZIOSpecDefault {
 
   def spec = suite("TestOntUtil")(
-    testM("Probabilistic ontology can be loaded from OWL API") {
+    test("Probabilistic ontology can be loaded from OWL API") {
       for {
         probOnt <- OntUtil.readProbabilisticOntology(new File("src/test/resources/prob_ont_1.ofn"))
-      } yield assert(probOnt)(equalTo(ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties)))
+      } yield assertTrue(probOnt == ProbabilisticOntology(TestOntUtilData.assertedOnt, TestOntUtilData.uncertainties))
     }
   )
 

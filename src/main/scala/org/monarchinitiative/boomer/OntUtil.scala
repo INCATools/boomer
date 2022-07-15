@@ -5,7 +5,7 @@ import io.circe.syntax._
 import org.apache.commons.codec.digest.DigestUtils
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS
 import org.geneontology.whelk.BuiltIn.Bottom
-import org.geneontology.whelk.{Individual => _, _}
+import org.geneontology.whelk.{Individual => _, Util => _, _}
 import org.monarchinitiative.boomer.Boom.BoomErrorMessage
 import org.monarchinitiative.boomer.Model.{ProbabilisticOntology, Proposal, Uncertainty}
 import org.phenoscape.scowl._
@@ -14,10 +14,9 @@ import org.semanticweb.owlapi.model._
 import org.semanticweb.owlapi.model.parameters.Imports
 import org.semanticweb.owlapi.search.EntitySearcher
 import zio._
-import zio.blocking._
-import zio.random.Random
+import zio.Random
 
-import java.io.{File, PrintWriter}
+import java.io.{File, IOException}
 import scala.jdk.CollectionConverters._
 
 object OntUtil {
@@ -32,17 +31,17 @@ object OntUtil {
   val SiblingOf: OWLAnnotationProperty = AnnotationProperty(s"$BoomPrefix/siblingOf")
   val VizWidth: OWLAnnotationProperty = AnnotationProperty("https://w3id.org/kgviz/penwidth")
 
-  def readProbabilisticOntology(file: File): ZIO[Blocking, Throwable, ProbabilisticOntology] = for {
-    manager <- Task.effect(OWLManager.createOWLOntologyManager())
-    inFile <- Task.effect(IRI.create(file))
-    ontology <- effectBlocking(manager.loadOntology(inFile))
+  def readProbabilisticOntology(file: File): ZIO[Any, Throwable, ProbabilisticOntology] = for {
+    manager <- ZIO.attempt(OWLManager.createOWLOntologyManager())
+    inFile <- ZIO.attempt(IRI.create(file))
+    ontology <- ZIO.attemptBlocking(manager.loadOntology(inFile))
     po <- partitionOntology(ontology)
   } yield po
 
   def partitionOntology(ontology: OWLOntology): Task[ProbabilisticOntology] = {
     val groups = EntitySearcher.getInstances(UncertaintyClass, ontology).asScala.to(Set).map(_ -> Set.empty[Proposal]).toMap
     val proposals: Task[(Map[OWLIndividual, Set[Proposal]], Set[OWLAxiom])] =
-      EntitySearcher.getInstances(ProposalClass, ontology).asScala.to(Set).foldLeft(Task.effect(groups -> Set.empty[OWLAxiom])) { case (acc, ind) =>
+      EntitySearcher.getInstances(ProposalClass, ontology).asScala.to(Set).foldLeft(ZIO.attempt(groups -> Set.empty[OWLAxiom])) { case (acc, ind) =>
         val proposalAnnotationSubject = ind match {
           case anon: OWLAnonymousIndividual => anon
           case named: OWLNamedIndividual    => named.getIRI
@@ -80,7 +79,8 @@ object OntUtil {
           .orElseFail(BoomErrorMessage(s"Can't find group for proposal: $proposalAnnotationSubject"))
         val maybeProposal = maybeProbability.map(p => Proposal(proposalLabel, proposalWhelkAxioms, p))
         for {
-          (groups, axiomsToRemove) <- acc
+          groupsAndAxiomsToRemove <- acc
+          (groups, axiomsToRemove) = groupsAndAxiomsToRemove
           group <- maybeGroup
           proposal <- maybeProposal
         } yield {
@@ -96,7 +96,7 @@ object OntUtil {
   }
 
   def negateConceptInclusion(axiom: ConceptInclusion): RIO[Random, Set[ConceptInclusion]] = for {
-    uuid <- random.nextUUID
+    uuid <- Random.nextUUID
     newClass = AtomicConcept(s"urn:uuid:${uuid.toString}")
   } yield Set(ConceptInclusion(newClass, axiom.subclass), ConceptInclusion(Conjunction(newClass, axiom.superclass), Bottom))
 
@@ -163,11 +163,9 @@ object OntUtil {
   def writeAsOBOJSON(ontology: OWLOntology,
                      labelIndex: Map[String, String],
                      prefixes: Map[String, String],
-                     filename: String): ZIO[Blocking, Throwable, Unit] = {
+                     filename: String): ZIO[Any, IOException, Unit] = {
     val obograph = asOBOGraphs(ontology, labelIndex, prefixes)
-    ZIO.effect(new PrintWriter(new File(filename), "utf-8")).bracketAuto { writer =>
-      effectBlockingIO(writer.write(obograph.asJson.deepDropNullValues.toString))
-    }
+    Util.writeToFile(obograph.asJson.deepDropNullValues.toString, new File(filename))
   }
 
   def asOBOGraphs(ontology: OWLOntology, labelIndex: Map[String, String], prefixes: Map[String, String]): OBOGraphs = {

@@ -11,10 +11,8 @@ import org.semanticweb.owlapi.apibinding.OWLManager
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat
 import org.semanticweb.owlapi.model.{AxiomType, IRI, OWLAnnotationProperty, OWLAxiom, OWLDisjointClassesAxiom, OWLOntology, OWLSubClassOfAxiom}
 import scribe.Level
-import zio.ZIO.ZIOAutoCloseableOps
+import zio.Console.printLine
 import zio._
-import zio.blocking._
-import zio.console._
 
 import java.io.{File, FileOutputStream, FileReader, PrintWriter}
 import java.math.BigInteger
@@ -70,25 +68,25 @@ final case class Options(
 
 object Main extends ZCaseApp[Options] {
 
-  override def run(options: Options, arg: RemainingArgs): ZIO[ZEnv, Nothing, ExitCode] = {
+  override def run(options: Options, arg: RemainingArgs): ZIO[Any, Nothing, ExitCode] = {
     val program = for {
-      _ <- ZIO.effectTotal(scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace())
-      start <- clock.nanoTime
+      _ <- ZIO.succeed(scribe.Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Info)).replace())
+      start <- Clock.nanoTime
       prefixes <- prefixesFromFile(options.prefixes).filterOrFail(checkNamespacesNonOverlapping)(
         BoomErrorMessage("No namespace should be a lexical substring of another; this will interfere with equivalence constraints."))
       mappings <- Mapping.readPTable(new File(options.ptable), prefixes)
-      ont <- ZIO.effect(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
+      ont <- ZIO.attempt(OWLManager.createOWLOntologyManager().loadOntology(IRI.create(new File(options.ontology))))
       labelIndex = indexLabels(ont)
       assertions = Bridge.ontologyToAxioms(ont)
       prohibitedPrefixEquivalences = prefixes.values.to(Set)
-      whelkTask = ZIO.effectTotal(Reasoner.assert(assertions, Map.empty, false))
+      whelkTask = ZIO.succeed(Reasoner.assert(assertions, Map.empty, false))
       whelk <- whelkTask
-      equivCliquesTask = ZIO.effectTotal(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
+      equivCliquesTask = ZIO.succeed(Mapping.makeMaximalEquivalenceCliques(mappings, assertions))
       equivCliques <- equivCliquesTask
       grouped = groupByClique(mappings, equivCliques)
-      _ <- ZIO.effect(scribe.info(s"Num mapping cliques: ${grouped.size}"))
-      _ <- ZIO.foreach_(grouped) { case (grouping, mappingGroup) =>
-        putStrLn(mappingGroup.size.toString)
+      _ <- ZIO.succeed(scribe.info(s"Num mapping cliques: ${grouped.size}"))
+      _ <- ZIO.foreachDiscard(grouped) { case (grouping, mappingGroup) =>
+        printLine(mappingGroup.size.toString)
       }
       runs = grouped.values.to(List)
       whelkWithNamespaceChecker = reasonerWithNamespaceChecker(whelk, prohibitedPrefixEquivalences)
@@ -111,8 +109,8 @@ object Main extends ZCaseApp[Options] {
         ResolvedUncertainties(singletons, "singletons")))
       filteredResultsByClique = filterCliques(consolidatedResultsByClique, options, prefixes)
       _ <- writeFilteredResultsToMarkdown(filteredResultsByClique, labelIndex, prefixes, options.output, options.subsequentSolutions)
-      _ <- ZIO.effect(new File(options.output).mkdirs())
-      _ <- ZIO.foreach_(filteredResultsByClique) { case (clique, resolved) =>
+      _ <- ZIO.attempt(new File(options.output).mkdirs())
+      _ <- ZIO.foreachDiscard(filteredResultsByClique) { case (clique, resolved) =>
         val cliqueName = cliqueID(clique)
         OntUtil.writeAsOBOJSON(resolvedUncertaintiesAsOntology(resolved.head, whelk, labelIndex, cliqueName),
                                labelIndex,
@@ -120,27 +118,27 @@ object Main extends ZCaseApp[Options] {
                                s"${options.output}/$cliqueName.json")
       }
       resolvedAsOne = (allResolutions.map(_.head.uncertainties)).fold(ResolvedUncertainties.empty.uncertainties)((a, b) => a ++ b)
-      _ <- ZIO.effect(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
-      _ <- ZIO.effect(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
-      end <- clock.nanoTime
-      _ <- ZIO.effect(scribe.info(s"${(end - start) / 1000000000}s"))
+      _ <- ZIO.succeed(scribe.info(s"Resolved size: ${resolvedAsOne.size}"))
+      _ <- ZIO.succeed(scribe.info(s"Most probable: ${resolvedAsOne.map(s => Math.log(s._2._1.probability)).sum}"))
+      end <- Clock.nanoTime
+      _ <- ZIO.succeed(scribe.info(s"${(end - start) / 1000000000}s"))
       selections = resolvedAsOne.values
       axioms = selections.flatMap(_._1.axioms.flatMap(axiom => OntUtil.whelkToOWL(axiom, !options.outputInternalAxioms))).to(Set)
       subclassAxioms = axioms.collect { case x: OWLSubClassOfAxiom => x }
       disjointAxioms = axioms.collect { case x: OWLDisjointClassesAxiom => x }
       axiomsUsingEquivalence = OntUtil.collapseEquivalents(subclassAxioms)
       allAxioms = axiomsUsingEquivalence ++ disjointAxioms
-      outputOntology <- ZIO.effect(OWLManager.createOWLOntologyManager().createOntology(allAxioms.toSet[OWLAxiom].asJava))
-      _ <- ZIO.effect(new FileOutputStream(new File(s"${options.output}.ofn"))).bracketAuto { ontStream =>
-        effectBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
+      outputOntology <- ZIO.attempt(OWLManager.createOWLOntologyManager().createOntology(allAxioms.toSet[OWLAxiom].asJava))
+      _ <- ZIO.attemptBlockingIO(new FileOutputStream(new File(s"${options.output}.ofn"))).acquireReleaseWithAuto { ontStream =>
+        ZIO.attemptBlocking(outputOntology.getOWLOntologyManager.saveOntology(outputOntology, new FunctionalSyntaxDocumentFormat(), ontStream))
       }
     } yield ()
     program
       .as(ExitCode.success)
       .catchSome { case BoomError(msg) =>
-        ZIO.effectTotal(scribe.error(msg)).as(ExitCode.failure)
+        ZIO.succeed(scribe.error(msg)).as(ExitCode.failure)
       }
-      .catchAllCause(cause => putStrLn(cause.untraced.prettyPrint).exitCode.as(ExitCode.failure))
+      .catchAllCause(cause => printLine(cause.untraced.prettyPrint).exitCode.as(ExitCode.failure))
   }
 
   def reasonerWithNamespaceChecker(reasonerState: ReasonerState, prohibitedPrefixEquivalences: Set[String]): ReasonerState =
@@ -172,14 +170,14 @@ object Main extends ZCaseApp[Options] {
         cliques
     }
 
-  def writeCliqueOutput(clique: Set[AtomicConcept], selections: ResolvedUncertainties, dirName: String): RIO[Blocking, Unit] = {
+  def writeCliqueOutput(clique: Set[AtomicConcept], selections: ResolvedUncertainties, dirName: String): Task[Unit] = {
     val cliqueName = if (clique.isEmpty) "SINGLETONS" else clique.to(List).map(_.id).sorted.mkString(" ")
-    ZIO.effect(new File(dirName).mkdirs()) *>
-      ZIO.effect(new PrintWriter(new File(s"$dirName/${cliqueID(clique)}.txt"), "utf-8")).bracketAuto { writer =>
-        effectBlocking(writer.println(s"## $cliqueName")) *>
-          ZIO.foreach_(selections.uncertainties) { case (unc, (selection, best)) =>
+    ZIO.attempt(new File(dirName).mkdirs()) *>
+      ZIO.attemptBlockingIO(new PrintWriter(new File(s"$dirName/${cliqueID(clique)}.txt"), "utf-8")).acquireReleaseWithAuto { writer =>
+        ZIO.attemptBlockingIO(writer.println(s"## $cliqueName")) *>
+          ZIO.foreachDiscard(selections.uncertainties) { case (unc, (selection, best)) =>
             val isBestText = if (best) "(most probable)" else ""
-            effectBlocking(writer.write(s"${selection.label}\t$isBestText\t${selection.probability}\n"))
+            ZIO.attemptBlockingIO(writer.write(s"${selection.label}\t$isBestText\t${selection.probability}\n"))
           }
       }
   }
@@ -194,7 +192,7 @@ object Main extends ZCaseApp[Options] {
   private def messageDigest: MessageDigest = MessageDigest.getInstance("SHA-256")
 
   def prefixesFromFile(filename: String): Task[Map[String, String]] =
-    ZIO.effect(new FileReader(new File(filename))).bracketAuto { reader =>
+    ZIO.attemptBlockingIO(new FileReader(new File(filename))).acquireReleaseWithAuto { reader =>
       ZIO.fromEither(parser.parse(reader)).flatMap { json =>
         ZIO.fromEither(json.as[Map[String, String]])
       }
@@ -222,9 +220,9 @@ object Main extends ZCaseApp[Options] {
                                      labelIndex: Map[String, String],
                                      prefixes: Map[String, String],
                                      filename: String,
-                                     subsequentNum: Int): ZIO[Blocking, Throwable, Unit] =
-    ZIO.effect(new PrintWriter(new File(s"$filename.md"), "utf-8")).bracketAuto { writer =>
-      ZIO.foreach_(filteredResultsByClique) { case (cliqueSet, selections) =>
+                                     subsequentNum: Int): Task[Unit] =
+    ZIO.attemptBlockingIO(new PrintWriter(new File(s"$filename.md"), "utf-8")).acquireReleaseWithAuto { writer =>
+      ZIO.foreachDiscard(filteredResultsByClique) { case (cliqueSet, selections) =>
         val bestSelections = selections.head
         val cliqueName =
           if (cliqueSet.isEmpty) "SINGLETONS"
@@ -244,22 +242,22 @@ object Main extends ZCaseApp[Options] {
           if (selections.length >= 2) Math.exp(score) / (Math.exp(Boom.jointProbability(selections(1))) + Math.exp(score))
           else 1.0
         val estimatedPosterior = Math.exp(score) / selections.map(Boom.jointProbability).map(Math.exp).sum
-        effectBlocking(
+        ZIO.attemptBlockingIO(
           writer.println(
             s"## $cliqueName\nMethod: ${bestSelections.method}\nScore: ${score}\nEstimated probability: ${estimatedPosterior}\nConfidence: ${confidence}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
           )
         ) *>
-          ZIO.foreach_(bestSelections.uncertainties) { case (unc, (selection, best)) =>
+          ZIO.foreachDiscard(bestSelections.uncertainties) { case (unc, (selection, best)) =>
             val isBestText = if (best) "(most probable)" else ""
             selection.label match {
               case mapping: MappingRelation =>
                 val leftTerm = s"[${labelIndex.getOrElse(mapping.left.id, OntUtil.compactIRI(mapping.left.id, prefixes))}](${mapping.left.id})"
                 val rightTerm = s"[${labelIndex.getOrElse(mapping.right.id, OntUtil.compactIRI(mapping.right.id, prefixes))}](${mapping.right.id})"
-                effectBlocking(writer.write(s"- $leftTerm ${mapping.label} $rightTerm\t$isBestText\t${selection.probability}\n"))
+                ZIO.attemptBlockingIO(writer.write(s"- $leftTerm ${mapping.label} $rightTerm\t$isBestText\t${selection.probability}\n"))
               case _ => ZIO.fail(BoomErrorMessage("Unexpectedly a mapping selection doesn't have a MappingRelation object"))
             }
           } *>
-          effectBlocking(writer.println())
+          ZIO.attemptBlockingIO(writer.println())
       }
     }
 
