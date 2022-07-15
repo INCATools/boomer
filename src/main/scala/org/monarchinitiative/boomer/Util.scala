@@ -1,5 +1,8 @@
 package org.monarchinitiative.boomer
 
+import zio._
+
+import java.io.{File, IOException, PrintWriter}
 import scala.annotation.tailrec
 import scala.collection.Searching.InsertionPoint
 
@@ -7,16 +10,14 @@ object Util {
 
   implicit final class BisectSearchOp[A](val self: Seq[A]) extends AnyVal {
 
-    /**
-      * Find an index in the sequence where the result of the given predicate function
+    /** Find an index in the sequence where the result of the given predicate function
       * changes from true to false. If there is more than one such index, the result
       * will not necessarily be useful.
       * For example, `List("a", "aa", "aaa").bisect(_.length < 3)` returns `InsertionPoint(2)`
       */
     def bisect(predicate: A => Boolean): InsertionPoint = bisect(0, self.size)(predicate)
 
-    /**
-      * Find an index within the specified range of the sequence where the result of the given predicate function
+    /** Find an index within the specified range of the sequence where the result of the given predicate function
       * changes from true to false. If there is more than one such index, the result
       * will not necessarily be useful.
       */
@@ -47,5 +48,10 @@ object Util {
     } yield (1.0 / windowCount) * i).toList
     histo(bounds, data)
   }
+
+  def writeToFile(text: String, file: File): IO[IOException, Unit] =
+    ZIO.attemptBlockingIO(new PrintWriter(file, "utf-8")).acquireReleaseWithAuto { writer =>
+      ZIO.attemptBlockingIO(writer.write(text))
+    }
 
 }

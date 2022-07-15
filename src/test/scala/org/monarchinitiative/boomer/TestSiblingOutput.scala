@@ -10,7 +10,7 @@ import zio.test._
 
 import scala.jdk.CollectionConverters._
 
-object TestSiblingOutput extends DefaultRunnableSpec {
+object TestSiblingOutput extends ZIOSpecDefault {
 
   private val probs = "A:1\tB:1\t0.01\t0.01\t0.05\t0.93\nA:2\tB:1\t0.01\t0.01\t0.95\t0.03"
   private val prefixes = Map("A" -> "http://example.org/A/", "B" -> "http://example.org/B/")
@@ -18,7 +18,7 @@ object TestSiblingOutput extends DefaultRunnableSpec {
   private val B1 = AtomicConcept("http://example.org/B/1")
 
   def spec = suite("TestSiblingOutput") {
-    testM("Selected sibling proposals should result in an annotation property relation and an edge in the OBOgraph") {
+    test("Selected sibling proposals should result in an annotation property relation and an edge in the OBOgraph") {
       for {
         mappings <- ZIO.foreach(probs.split("\n", -1).toSet)(Mapping.parsePTableLine(_, prefixes))
         prohibitedPrefixEquivalences = prefixes.values.to(Set)

@@ -2,21 +2,20 @@ package org.monarchinitiative.boomer
 
 import org.geneontology.whelk._
 import org.monarchinitiative.boomer.TestUtil._
-import zio.test.Assertion._
 import zio.test._
 
-object TestNamespaceCheck extends DefaultRunnableSpec {
+object TestNamespaceCheck extends ZIOSpecDefault {
 
   def spec = suite("TestNamespaceCheck")(
-    testM("Prevent terms in same namespace from being inferred equivalent") {
+    test("Prevent terms in same namespace from being inferred equivalent") {
       for {
         axioms <- loadTestAxiomsFromFile("namespace-check.ofn")
         whelk = Reasoner.assert(axioms, Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set("http://example.org/namespacecheck1/"), Nil)))
         violations = namespaceViolations(whelk)
-      } yield assert(violations(AtomicConcept("http://example.org/namespacecheck1/A")))(isTrue) &&
-        assert(violations(AtomicConcept("http://example.org/namespacecheck1/D")))(isTrue) &&
-        assert(violations(AtomicConcept("http://example.org/namespacecheck2/G")))(isFalse) &&
-        assert(violations(AtomicConcept("http://example.org/namespacecheck2/H")))(isFalse)
+      } yield assertTrue(violations(AtomicConcept("http://example.org/namespacecheck1/A"))) &&
+        assertTrue(violations(AtomicConcept("http://example.org/namespacecheck1/D"))) &&
+        assertTrue(!(violations(AtomicConcept("http://example.org/namespacecheck2/G")))) &&
+        assertTrue(!(violations(AtomicConcept("http://example.org/namespacecheck2/H"))))
     }
   )
 

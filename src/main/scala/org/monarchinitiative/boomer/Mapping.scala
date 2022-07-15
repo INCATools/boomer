@@ -4,7 +4,6 @@ import org.geneontology.whelk._
 import org.monarchinitiative.boomer.Boom.{BoomErrorMessage, ResolvedUncertainties}
 import org.monarchinitiative.boomer.Model.{Proposal, Uncertainty}
 import org.monarchinitiative.boomer.OntUtil.{disjointSibling, expandCURIE}
-import zio.blocking.Blocking
 import zio.{Task, ZIO}
 
 import java.io.File
@@ -12,10 +11,10 @@ import scala.io.Source
 
 object Mapping {
 
-  def readPTable(file: File, prefixes: Map[String, String]): ZIO[Blocking, Throwable, Set[Mapping]] =
-    Task
-      .effect(Source.fromFile(file, "utf-8"))
-      .bracketAuto { source =>
+  def readPTable(file: File, prefixes: Map[String, String]): ZIO[Any, Throwable, Set[Mapping]] =
+    ZIO
+      .attempt(Source.fromFile(file, "utf-8"))
+      .acquireReleaseWithAuto { source =>
         ZIO.foreach(source.getLines().to(Iterable))(parsePTableLine(_, prefixes))
       }
       .map(_.to(Set))
@@ -30,10 +29,10 @@ object Mapping {
         rightID <- ZIO.fromOption(expandCURIE(rightCURIE, prefixes)).orElseFail(BoomErrorMessage(s"Failed expanding CURIE: $rightCURIE"))
         left = AtomicConcept(leftID)
         right = AtomicConcept(rightID)
-        probProperSubLeftRight <- Task.effect(columns(2).trim.toDouble)
-        probProperSubRightLeft <- Task.effect(columns(3).trim.toDouble)
-        probEquivalent <- Task.effect(columns(4).trim.toDouble)
-        probNoSubsumption <- Task.effect(columns(5).trim.toDouble)
+        probProperSubLeftRight <- ZIO.attempt(columns(2).trim.toDouble)
+        probProperSubRightLeft <- ZIO.attempt(columns(3).trim.toDouble)
+        probEquivalent <- ZIO.attempt(columns(4).trim.toDouble)
+        probNoSubsumption <- ZIO.attempt(columns(5).trim.toDouble)
         disjointSiblingOfLeftUnderRight = disjointSibling(left, right)
         disjointSiblingOfRightUnderLeft = disjointSibling(right, left)
       } yield {
@@ -54,7 +53,7 @@ object Mapping {
           equivalenceProposal
         )
       }
-    } else Task.fail(BoomErrorMessage(s"Invalid ptable line: $line"))
+    } else ZIO.fail(BoomErrorMessage(s"Invalid ptable line: $line"))
   }
 
   def makeMaximalEquivalenceCliques(mappings: Set[Mapping], assertions: Set[Axiom]): Map[AtomicConcept, Set[AtomicConcept]] = {

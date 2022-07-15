@@ -7,25 +7,25 @@ import org.monarchinitiative.boomer.TestUtil._
 import zio.test.Assertion._
 import zio.test._
 
-object TestUnresolvable extends DefaultRunnableSpec {
+object TestUnresolvable extends ZIOSpecDefault {
 
   def spec = suite("TestUnresolvable")(
-    testM("Ensure reasonable behavior when uncertainties are unresolvable") {
+    test("Ensure reasonable behavior when uncertainties are unresolvable") {
       val resultIO = for {
         axioms <- loadTestAxiomsFromFile("unresolvable-mappings-test1.ofn")
         delegates = Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set.empty, Nil)) //TODO handle error if this is not provided
         whelk = Reasoner.assert(axioms, delegates)
         result <- Boom.evaluateGreedily(uncertainties1, whelk, 10, 1)
       } yield result
-      assertM(resultIO.flip)(equalTo(UnresolvableUncertainties))
+      assertZIO(resultIO.flip)(equalTo(UnresolvableUncertainties))
     },
-    testM("Ensure a perplexity can be created if there is a conflict with the first uncertainty") {
+    test("Ensure a perplexity can be created if there is a conflict with the first uncertainty") {
       for {
         axioms <- loadTestAxiomsFromFile("unresolvable-mappings-test2.ofn")
         delegates = Map(NamespaceChecker.DelegateKey -> NamespaceChecker(Set.empty, Nil))
         whelk = Reasoner.assert(axioms, delegates)
         result <- Boom.evaluateGreedily(uncertainties2, whelk, 10, 1)
-      } yield assert(result)(isNonEmpty)
+      } yield assertTrue(result.nonEmpty)
     }
   )
 
