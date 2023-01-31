@@ -244,7 +244,7 @@ object Main extends ZCaseApp[Options] {
         val estimatedPosterior = Math.exp(score) / selections.map(Boom.jointProbability).map(Math.exp).sum
         ZIO.attemptBlockingIO(
           writer.println(
-            s"## $cliqueName\nIdentifier: ${cliqueID(clique)}\nMethod: ${bestSelections.method}\nScore: ${score}\nEstimated probability: ${estimatedPosterior}\nConfidence: ${confidence}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
+            s"## $cliqueName\nIdentifier: ${cliqueID(cliqueSeq)}\nMethod: ${bestSelections.method}\nScore: ${score}\nEstimated probability: ${estimatedPosterior}\nConfidence: ${confidence}\nSubsequent scores (max $subsequentNum): $subsequentScores\n"
           )
         ) *>
           ZIO.foreachDiscard(bestSelections.uncertainties) { case (unc, (selection, best)) =>
