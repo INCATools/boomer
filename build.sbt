@@ -33,7 +33,7 @@ libraryDependencies ++= {
     "io.circe"                   %% "circe-generic"       % "0.14.4",
     "io.circe"                   %% "circe-yaml"          % "0.14.1",
     "com.github.alexarchambault" %% "case-app"            % "2.0.6",
-    "org.scalaz"                 %% "scalaz-core"         % "7.3.6",
+    "org.scalaz"                 %% "scalaz-core"         % "7.3.7",
     "dev.zio"                    %% "zio-test"            % zioVersion % Test,
     "dev.zio"                    %% "zio-test-sbt"        % zioVersion % Test
   )
