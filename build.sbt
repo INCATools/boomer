@@ -22,7 +22,7 @@ val zioVersion = "2.0.22"
 
 libraryDependencies ++= {
   Seq(
-    "org.geneontology"           %% "whelk-owlapi"        % "1.1.3",
+    "org.geneontology"           %% "whelk-owlapi"        % "1.2.1",
     "dev.zio"                    %% "zio"                 % zioVersion,
     "org.phenoscape"             %% "scowl"               % "1.4.1",
     "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.29",
