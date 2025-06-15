@@ -31,7 +31,7 @@ libraryDependencies ++= {
     "com.outr"                   %% "scribe-slf4j"        % "3.16.1",
     "io.circe"                   %% "circe-core"          % "0.14.13",
     "io.circe"                   %% "circe-generic"       % "0.14.13",
-    "io.circe"                   %% "circe-yaml"          % "0.14.2",
+    "io.circe"                   %% "circe-yaml"          % "0.16.1",
     "com.github.alexarchambault" %% "case-app"            % "2.0.6",
     "org.scalaz"                 %% "scalaz-core"         % "7.3.8",
     "dev.zio"                    %% "zio-test"            % zioVersion % Test,
