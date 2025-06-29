@@ -1,0 +1,74 @@
+Prefix: : <http://example.org/wordle/>
+Prefix: soln: <http://example.org/soln/>
+
+## Wordle
+Ontology: <http://example.org/wordle.owl>
+        
+
+ObjectProperty: :hasLetter
+ObjectProperty: :hasLetter1
+  Characteristics: Functional
+  SubPropertyOf: :hasLetter
+ObjectProperty: :hasLetter2
+  Characteristics: Functional
+  SubPropertyOf: :hasLetter
+ObjectProperty: :hasLetter3
+  Characteristics: Functional
+  SubPropertyOf: :hasLetter
+ObjectProperty: :hasLetter4
+  Characteristics: Functional
+  SubPropertyOf: :hasLetter
+ObjectProperty: :hasLetter5
+  Characteristics: Functional
+  SubPropertyOf: :hasLetter
+
+Class: :Letter
+  DisjointUnionOf: :A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K, :L, :M, :N, :O, :P, :Q, :R, :S, :T, :U, :V, :W, :X, :Y, :Z
+  SubClassOf: :A OR :B OR :C OR :D OR :E OR :F OR :G OR :H OR :I OR :J OR :K OR :L OR :M OR :N OR :O OR :P OR :Q OR :R OR :S OR :T OR :U OR :V OR :W OR :X OR :Y OR :Z
+Class: :A SubClassOf: :Letter
+Class: :B SubClassOf: :Letter
+Class: :C SubClassOf: :Letter
+Class: :D SubClassOf: :Letter
+Class: :E SubClassOf: :Letter
+Class: :F SubClassOf: :Letter
+Class: :G SubClassOf: :Letter
+Class: :H SubClassOf: :Letter
+Class: :I SubClassOf: :Letter
+Class: :J SubClassOf: :Letter
+Class: :K SubClassOf: :Letter
+Class: :L SubClassOf: :Letter
+Class: :M SubClassOf: :Letter
+Class: :N SubClassOf: :Letter
+Class: :O SubClassOf: :Letter
+Class: :P SubClassOf: :Letter
+Class: :Q SubClassOf: :Letter
+Class: :R SubClassOf: :Letter
+Class: :S SubClassOf: :Letter
+Class: :T SubClassOf: :Letter
+Class: :U SubClassOf: :Letter
+Class: :V SubClassOf: :Letter
+Class: :W SubClassOf: :Letter
+Class: :X SubClassOf: :Letter
+Class: :Y SubClassOf: :Letter
+Class: :Z SubClassOf: :Letter
+
+Class: :Letter1
+  SubClassOf: :Letter
+Class: :Letter2
+  SubClassOf: :Letter
+Class: :Letter3
+  SubClassOf: :Letter
+Class: :Letter4
+  SubClassOf: :Letter
+Class: :Letter5
+  SubClassOf: :Letter
+
+
+Class: :TodaysWord
+  SubClassOf: :hasLetter1 some :Letter1, :hasLetter1 only :Letter1
+  SubClassOf: :hasLetter2 some :Letter2, :hasLetter2 only :Letter2
+  SubClassOf: :hasLetter3 some :Letter3, :hasLetter3 only :Letter3
+  SubClassOf: :hasLetter4 some :Letter4, :hasLetter4 only :Letter4
+  SubClassOf: :hasLetter5 some :Letter5, :hasLetter5 only :Letter5
+
+        
