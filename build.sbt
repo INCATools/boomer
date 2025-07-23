@@ -27,7 +27,7 @@ libraryDependencies ++= {
     "org.phenoscape"             %% "scowl"               % "1.4.1",
     "net.sourceforge.owlapi"      % "owlapi-distribution" % "4.5.29",
     "org.geneontology"            % "obographs"           % "0.2.1",
-    "commons-codec"               % "commons-codec"       % "1.18.0",
+    "commons-codec"               % "commons-codec"       % "1.19.0",
     "com.outr"                   %% "scribe-slf4j"        % "3.16.1",
     "io.circe"                   %% "circe-core"          % "0.14.13",
     "io.circe"                   %% "circe-generic"       % "0.14.13",
